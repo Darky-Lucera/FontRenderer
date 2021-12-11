@@ -20,7 +20,7 @@
 
 //-------------------------------------
 static uint32_t g_width   = 512;
-static uint32_t g_height  = 512;
+static uint32_t g_height  = 256;
 static uint32_t *g_buffer = nullptr;
 static int32_t  g_left   = 0;
 static int32_t  g_top    = 0;
@@ -56,7 +56,11 @@ int
 main(int argc, char *argv[]) {
     SetAppDirectory(argv[0]);
     struct mfb_timer *timer = mfb_timer_create();
-    std::string text = MindShake::UTF32_2_UTF8(U"  ¡Hola!\nPepe\náéíóúq");
+    // Visual Studio does not convert multiple-byte characters with the u8 string literal.
+    // This trick fixes some of them but, sadly, not all.
+    std::string text1 = MindShake::UTF32_2_UTF8(U"¡Hola\nPepe!\n¿Cómo\nestás?");
+    std::string text2 = "STB:\n" + text1;
+    text1 = "SFT:\n" + text1;
 
     MindShake::FontSFT fontSFT("resources/Cartoon_Regular.ttf");
     MindShake::FontSTB fontSTB("resources/Cartoon_Regular.ttf");
@@ -64,7 +68,7 @@ main(int argc, char *argv[]) {
     fontSFT.SetClipping(g_left, g_top, g_right, g_bottom);
     fontSTB.SetClipping(g_left, g_top, g_right, g_bottom);
 
-    struct mfb_window *window = mfb_open_ex("Noise Test", g_width, g_height, WF_RESIZABLE);
+    struct mfb_window *window = mfb_open_ex("Font Renderer", g_width, g_height, WF_RESIZABLE);
     if (!window) {
         fprintf(stderr, "Cannot create window!\n");
         return -1;
@@ -123,7 +127,7 @@ main(int argc, char *argv[]) {
 
 #if defined(kShowBoundingBox)
         Rect rectSFT{};
-        fontSFT.GetTextBox(text.c_str(), 32, &rectSFT);
+        fontSFT.GetTextBox(text1.c_str(), 32, &rectSFT);
 
         left = posX1 + rectSFT.x;
         top  = posY1 + rectSFT.y;
@@ -142,7 +146,7 @@ main(int argc, char *argv[]) {
 
 #if defined(kShowBoundingBox)
         Rect rectSTB{};
-        fontSTB.GetTextBox(text.c_str(), 32, &rectSTB);
+        fontSTB.GetTextBox(text2.c_str(), 32, &rectSTB);
 
         left = posX2 + rectSTB.x;
         top  = posY2 + rectSTB.y;
@@ -158,22 +162,23 @@ main(int argc, char *argv[]) {
                 g_buffer[y * g_width + posX2 + rectSTB.width-1] = MFB_RGB(0, 255, 0);
         }
 #endif
+        size_t total = 1024;
 
         double s1 = mfb_timer_now(timer);
-        for(size_t i=0; i<1024; ++i) {
-            fontSFT.DrawText(text.c_str(), 32, 0xff0000, g_buffer, g_width, posX1, posY1);
+        for(size_t i=0; i<total; ++i) {
+            fontSFT.DrawText(text1.c_str(), 32, 0xff7f7f, g_buffer, g_width, posX1, posY1);
         }
         double e1 = mfb_timer_now(timer);
-        
+
         double s2 = mfb_timer_now(timer);
-        for(size_t i=0; i<1024; ++i) {
-            fontSTB.DrawText(text.c_str(), 32, 0xff0000, g_buffer, g_width, posX2, posY2);
+        for(size_t i=0; i<total; ++i) {
+            fontSTB.DrawText(text2.c_str(), 32, 0x7f7fff, g_buffer, g_width, posX2, posY2);
         }
         double e2 = mfb_timer_now(timer);
-        
+
         char buffer[256];
-        snprintf(buffer, sizeof(buffer), "Time: %f - %f\n", float(e1 - s1), float(e2 - s2));
-        
+        snprintf(buffer, sizeof(buffer), "Time: %f - %f (%d)\n", float(e1 - s1), float(e2 - s2), int(total));
+
         fontSFT.DrawText(buffer, 20, 0xffffff, g_buffer, g_width, 0, g_height - 32);
 
         state = mfb_update_ex(window, g_buffer, g_width, g_height);

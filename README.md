@@ -1,6 +1,6 @@
 # FontRenderer
 
-FontRenderer is a simple tool for rendering text from a ttf font into a buffer.
+FontRenderer is a simple tool for rendering text from a ttf font into a buffer (with clipping).
 
 As an example I have used the Mini Frame Buffer (MiniFB) library to create a window and render some text inside.
 
@@ -50,3 +50,7 @@ Select the library you want to use into your project (stb_truetype, libschrift, 
 - FontSTB.h
 - FontSTB.cpp
 - stb_truetype.h
+
+# Captures
+
+| ![](screenshots/capture_cartoon.png) | ![](screenshots/capture_arial.png) |
