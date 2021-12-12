@@ -39,6 +39,8 @@ Select the library you want to use into your project (stb_truetype, libschrift, 
 
 - Font.h
 - Font.cpp
+- SkylineBinPack.h
+- SkylineBinPack.cpp
 ---
 **If you choose to use libschrift**
 - FontSFT.h
@@ -53,4 +55,4 @@ Select the library you want to use into your project (stb_truetype, libschrift, 
 
 # Captures
 
-| ![](screenshots/capture_cartoon.png) | ![](screenshots/capture_arial.png) |
+|![](screenshots/capture_cartoon.png)|![](screenshots/capture_arial.png)|

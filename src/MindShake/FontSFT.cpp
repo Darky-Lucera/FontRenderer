@@ -169,6 +169,8 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
         img.height = metrics.minHeight;
         img.pixels = new uint8_t[img.width * img.height];
         if (sft_render(&sft, codePoint.glyph, img) < 0) {
+            delete [] img.pixels;
+            img.pixels = nullptr;
             return mCodePointHeightData[0];
         }
 
@@ -186,10 +188,14 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
             mPacker.ResizeBin(mPacker.GetWidth(), mPacker.GetHeight() << 1);
             mTexture = (uint8_t *) realloc(mTexture, mPacker.GetWidth() * mPacker.GetHeight());
             if(mTexture == nullptr) {
+                delete [] img.pixels;
+                img.pixels = nullptr;
                 return mCodePointHeightData[0];
             }
             codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
             if(codePointHeight.rect.width <= 0) {
+                delete [] img.pixels;
+                img.pixels = nullptr;
                 return mCodePointHeightData[0];
             }
         }
@@ -203,6 +209,9 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
         }
 
         cphd = mCodePointHeightData.insert({cph.value, codePointHeight}).first;
+
+        delete [] img.pixels;
+        img.pixels = nullptr;
     }
 
     return cphd->second;
