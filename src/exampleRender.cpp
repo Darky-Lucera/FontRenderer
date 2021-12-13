@@ -58,9 +58,9 @@ main(int argc, char *argv[]) {
     struct mfb_timer *timer = mfb_timer_create();
     // Visual Studio does not convert multiple-byte characters with the u8 string literal.
     // This trick fixes some of them but, sadly, not all.
-    std::string text1 = MindShake::UTF32_2_UTF8(U"¡Hola\nPepe!\n¿Cómo\nestás?");
-    std::string text2 = "STB:\n" + text1;
-    text1 = "SFT:\n" + text1;
+    std::string text1 = MindShake::UTF32_2_UTF8(U"P ¡Hola\nPepe!\n¿Cómo\nestás?");
+    std::string text2 = MindShake::UTF32_2_UTF8(U"STB:\n") + text1;
+    text1 = MindShake::UTF32_2_UTF8(U"SFT:\n") + text1;
 
     MindShake::FontSFT fontSFT("resources/Roboto-Regular.ttf");
     MindShake::FontSTB fontSTB("resources/Roboto-Regular.ttf");
@@ -70,6 +70,9 @@ main(int argc, char *argv[]) {
 
     fontSFT.SetAntialias(true);
     fontSTB.SetAntialias(true);
+
+    fontSFT.SetAntialiasWeight(16);
+    fontSTB.SetAntialiasWeight(16);
 
     struct mfb_window *window = mfb_open_ex("Font Renderer", g_width, g_height, WF_RESIZABLE);
     if (!window) {

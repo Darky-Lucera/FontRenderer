@@ -58,4 +58,6 @@ Select the library you want to use into your project (stb_truetype, libschrift, 
 
 # Captures
 
+|Normal|AntiAlias|
+|---|---|
 |![](screenshots/capture.png)|![](screenshots/captureAA.png)|

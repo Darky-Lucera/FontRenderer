@@ -87,23 +87,23 @@ namespace MindShake {
     UTF32_2_UTF8(const char32_t *utf32) {
         std::string utf8;
 
-        while(*utf32++ != 0) {
+        while(*utf32 != 0) {
             if (*utf32 < 0x80)
-                utf8 += static_cast<uint8_t>(*utf32);
+                utf8 += static_cast<uint8_t>(*utf32++);
             else if (*utf32 < 0x800) {
-                utf8 += static_cast<uint8_t>((*utf32 >> 6)          | 0xc0);
-                utf8 += static_cast<uint8_t>((*utf32 & 0x3f)        | 0x80);
+                utf8 += static_cast<uint8_t>((*utf32++ >> 6)          | 0xc0);
+                utf8 += static_cast<uint8_t>((*utf32++ & 0x3f)        | 0x80);
             }
             else if (*utf32 < 0x10000) {
-                utf8 += static_cast<uint8_t>((*utf32 >> 12)         | 0xe0);
-                utf8 += static_cast<uint8_t>(((*utf32 >> 6) & 0x3f) | 0x80);
-                utf8 += static_cast<uint8_t>((*utf32 & 0x3f)        | 0x80);
+                utf8 += static_cast<uint8_t>((*utf32++ >> 12)         | 0xe0);
+                utf8 += static_cast<uint8_t>(((*utf32++ >> 6) & 0x3f) | 0x80);
+                utf8 += static_cast<uint8_t>((*utf32++ & 0x3f)        | 0x80);
             }
             else {
-                utf8 += static_cast<uint8_t>((*utf32 >> 18)         | 0xf0);
-                utf8 += static_cast<uint8_t>(((*utf32 >> 12) & 0x3f)| 0x80);
-                utf8 += static_cast<uint8_t>(((*utf32 >> 6) & 0x3f) | 0x80);
-                utf8 += static_cast<uint8_t>((*utf32 & 0x3f)        | 0x80);
+                utf8 += static_cast<uint8_t>((*utf32++ >> 18)         | 0xf0);
+                utf8 += static_cast<uint8_t>(((*utf32++ >> 12) & 0x3f)| 0x80);
+                utf8 += static_cast<uint8_t>(((*utf32++ >> 6) & 0x3f) | 0x80);
+                utf8 += static_cast<uint8_t>((*utf32++ & 0x3f)        | 0x80);
             }
         }
 

@@ -150,7 +150,7 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
     CodePointHeight cph;
     cph.codePoint = index;
     cph.height    = height;
-
+    
     auto cphd = mCodePointHeightData.find(cph.value);
     if(cphd == mCodePointHeightData.end()) {
         const CodePointData &codePoint = GetCodePointData(index);
@@ -174,11 +174,22 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
         w = (x2 - x1);//codePointHeight.advanceWidth - codePointHeight.leftSideBearing;
         h = (y2 - y1);
 
+        // special case (' ')
+        bool isEmpty = false;
+        if(w == 0) {
+            w = 1;
+            isEmpty = true;
+        }
+        if(h == 0) {
+            h = 1;
+            isEmpty = true;
+        }
+
         codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
         if(codePointHeight.rect.width <= 0) {
             mPacker.ResizeBin(mPacker.GetWidth(), mPacker.GetHeight() << 1);
             uint8_t *aux = (uint8_t *) realloc(mTexture, mPacker.GetWidth() * mPacker.GetHeight());
-            if(mTexture == nullptr) {
+            if(aux == nullptr) {
                 return mCodePointHeightData[0];
             }
             mTexture = aux;
@@ -190,8 +201,17 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
 
         size_t byteOffset = (codePointHeight.rect.y) * mPacker.GetWidth() + codePointHeight.rect.x;
         uint8_t *dst = mTexture + byteOffset;
-        if(mUseAntialias == false) {
-            stbtt_MakeGlyphBitmap(&mInfo, mTexture + byteOffset, w, h, mPacker.GetWidth(), scale, scale, codePoint.glyph);
+        if(isEmpty) {
+            int offset = 0;
+            for(int y=0; y<h; ++y) {
+                for(int x=0; x<w; ++x) {
+                    dst[offset + x] = 0;
+                }
+                offset += mPacker.GetWidth();
+            }
+        }
+        else if(mUseAntialias == false) {
+            stbtt_MakeGlyphBitmap(&mInfo, dst, w, h, mPacker.GetWidth(), scale, scale, codePoint.glyph);
         }
         else {
             auto src = std::make_unique<uint8_t[]>(w * h); 

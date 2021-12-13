@@ -160,25 +160,41 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
         }
 
         // special case (' ')
-        if(metrics.minWidth == 0)
+        bool isEmpty = false;
+        if(metrics.minWidth == 0) {
             metrics.minWidth = 1;
-        if(metrics.minHeight == 0)
+            isEmpty = true;
+        }
+        if(metrics.minHeight == 0) {
             metrics.minHeight = 1;
+            isEmpty = true;
+        }
 
         SFT_Image img {};
         img.width  = metrics.minWidth;
         img.height = metrics.minHeight;
         auto pixels = std::make_unique<uint8_t[]>(img.width * img.height); 
         img.pixels = pixels.get();
-        if (sft_render(&sft, codePoint.glyph, img) < 0) {
-            return mCodePointHeightData[0];
+        if(isEmpty) {
+            int offset = 0;
+            for(int y=0; y<img.height; ++y) {
+                for(int x=0; x<img.width; ++x) {
+                    pixels[offset + x] = 0;
+                }
+                offset += mPacker.GetWidth();
+            }
         }
+        else {
+            if (sft_render(&sft, codePoint.glyph, img) < 0) {
+                return mCodePointHeightData[0];
+            }
 
-        if(mUseAntialias) {
-            auto dst = std::make_unique<uint8_t[]>(img.width * img.height); 
-            AABlock(pixels.get(), img.width, img.height, dst.get(), img.width);
-            std::swap(pixels, dst);
-            img.pixels = pixels.get();
+            if(mUseAntialias) {
+                auto dst = std::make_unique<uint8_t[]>(img.width * img.height); 
+                AABlock(pixels.get(), img.width, img.height, dst.get(), img.width);
+                std::swap(pixels, dst);
+                img.pixels = pixels.get();
+            }
         }
 
         codePointHeight.glyph           = codePoint.glyph;
