@@ -10,7 +10,7 @@ add_subdirectory("dependencies/minifb" EXCLUDE_FROM_ALL)
 
 # C++ version
 #--------------------------------------
-set(CMAKE_CXX_STANDARD 03)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 

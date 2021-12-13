@@ -9,6 +9,7 @@
 //-------------------------------------
 #include <cstdio>
 #include <cmath>
+#include <memory>
 
 using namespace MindShake;
 
@@ -167,11 +168,17 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
         SFT_Image img {};
         img.width  = metrics.minWidth;
         img.height = metrics.minHeight;
-        img.pixels = new uint8_t[img.width * img.height];
+        auto pixels = std::make_unique<uint8_t[]>(img.width * img.height); 
+        img.pixels = pixels.get();
         if (sft_render(&sft, codePoint.glyph, img) < 0) {
-            delete [] img.pixels;
-            img.pixels = nullptr;
             return mCodePointHeightData[0];
+        }
+
+        if(mUseAntialias) {
+            auto dst = std::make_unique<uint8_t[]>(img.width * img.height); 
+            AABlock(pixels.get(), img.width, img.height, dst.get(), img.width);
+            std::swap(pixels, dst);
+            img.pixels = pixels.get();
         }
 
         codePointHeight.glyph           = codePoint.glyph;
@@ -186,16 +193,13 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
         codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
         if(codePointHeight.rect.width <= 0) {
             mPacker.ResizeBin(mPacker.GetWidth(), mPacker.GetHeight() << 1);
-            mTexture = (uint8_t *) realloc(mTexture, mPacker.GetWidth() * mPacker.GetHeight());
-            if(mTexture == nullptr) {
-                delete [] img.pixels;
-                img.pixels = nullptr;
+            uint8_t *aux = (uint8_t *) realloc(mTexture, mPacker.GetWidth() * mPacker.GetHeight());
+            if(aux == nullptr) {
                 return mCodePointHeightData[0];
             }
+            mTexture = aux;
             codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
             if(codePointHeight.rect.width <= 0) {
-                delete [] img.pixels;
-                img.pixels = nullptr;
                 return mCodePointHeightData[0];
             }
         }
@@ -209,9 +213,6 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
         }
 
         cphd = mCodePointHeightData.insert({cph.value, codePointHeight}).first;
-
-        delete [] img.pixels;
-        img.pixels = nullptr;
     }
 
     return cphd->second;

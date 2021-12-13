@@ -17,7 +17,7 @@ namespace MindShake {
     //---------------------------------
     class FontSFT : public Font {
         public:
-                                        FontSFT(const char *fontName);
+            explicit                    FontSFT(const char *fontName);
             virtual                     ~FontSFT();
 
         protected:

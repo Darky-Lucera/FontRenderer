@@ -7,16 +7,19 @@ As an example I have used the Mini Frame Buffer (MiniFB) library to create a win
 # API
 
 The APi is simple:
-```c
+```cpp
 const char text = "Hello World!";
 uint32_t   fontSize = 32;
-uint32_t   color32 = 0xffff0000;
+uint32_t   color32 = 0xff0000;
 
 // Load a font
-MindShake::FontSTB font("resources/Cartoon_Regular.ttf");
+MindShake::FontSTB font("resources/Roboto-Regular.ttf");
 
 // Set the clipping (optional)
 font.SetClipping(left, top, right, bottom);
+
+// Enable Anti Alias
+font.SetAntialias(true);
 
 // In case you need the dimensions of the future rendered text. For instance to horizontal align text...
 Rect rect;
@@ -55,4 +58,4 @@ Select the library you want to use into your project (stb_truetype, libschrift, 
 
 # Captures
 
-|![](screenshots/capture_cartoon.png)|![](screenshots/capture_arial.png)|
+|![](screenshots/capture.png)|![](screenshots/captureAA.png)|

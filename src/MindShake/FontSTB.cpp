@@ -10,6 +10,7 @@
 #include "FontSTB.h"
 //-------------------------------------
 #include <cstdio>
+#include <memory>
 
 using namespace MindShake;
 
@@ -33,6 +34,7 @@ FontSTB::FontSTB(const char *fontName) {
     if(mFontBuffer == nullptr) {
         fprintf(stderr, "Not enough memory\n");
         mStatus = -3;
+        fclose(fontFile);
         return;
     }
 
@@ -169,17 +171,17 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
         codePointHeight.leftSideBearing = int(floor(codePoint.leftSideBearing * scale));
         codePointHeight.advanceWidth    = int(ceil( codePoint.advanceWidth    * scale));
 
-
-        w = codePointHeight.advanceWidth - codePointHeight.leftSideBearing;
+        w = (x2 - x1);//codePointHeight.advanceWidth - codePointHeight.leftSideBearing;
         h = (y2 - y1);
 
         codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
         if(codePointHeight.rect.width <= 0) {
             mPacker.ResizeBin(mPacker.GetWidth(), mPacker.GetHeight() << 1);
-            mTexture = (uint8_t *) realloc(mTexture, mPacker.GetWidth() * mPacker.GetHeight());
+            uint8_t *aux = (uint8_t *) realloc(mTexture, mPacker.GetWidth() * mPacker.GetHeight());
             if(mTexture == nullptr) {
                 return mCodePointHeightData[0];
             }
+            mTexture = aux;
             codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
             if(codePointHeight.rect.width <= 0) {
                 return mCodePointHeightData[0];
@@ -187,7 +189,15 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
         }
 
         size_t byteOffset = (codePointHeight.rect.y) * mPacker.GetWidth() + codePointHeight.rect.x;
-        stbtt_MakeGlyphBitmap(&mInfo, mTexture + byteOffset, x2 - x1, y2 - y1, mPacker.GetWidth(), scale, scale, codePoint.glyph);
+        uint8_t *dst = mTexture + byteOffset;
+        if(mUseAntialias == false) {
+            stbtt_MakeGlyphBitmap(&mInfo, mTexture + byteOffset, w, h, mPacker.GetWidth(), scale, scale, codePoint.glyph);
+        }
+        else {
+            auto src = std::make_unique<uint8_t[]>(w * h); 
+            stbtt_MakeGlyphBitmap(&mInfo, src.get(), w, h, w, scale, scale, codePoint.glyph);
+            AABlock(src.get(), w, h, dst, mPacker.GetWidth());
+        }
 
         cphd = mCodePointHeightData.insert({cph.value, codePointHeight}).first;
     }

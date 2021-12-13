@@ -62,11 +62,14 @@ main(int argc, char *argv[]) {
     std::string text2 = "STB:\n" + text1;
     text1 = "SFT:\n" + text1;
 
-    MindShake::FontSFT fontSFT("resources/Cartoon_Regular.ttf");
-    MindShake::FontSTB fontSTB("resources/Cartoon_Regular.ttf");
+    MindShake::FontSFT fontSFT("resources/Roboto-Regular.ttf");
+    MindShake::FontSTB fontSTB("resources/Roboto-Regular.ttf");
 
     fontSFT.SetClipping(g_left, g_top, g_right, g_bottom);
     fontSTB.SetClipping(g_left, g_top, g_right, g_bottom);
+
+    fontSFT.SetAntialias(true);
+    fontSTB.SetAntialias(true);
 
     struct mfb_window *window = mfb_open_ex("Font Renderer", g_width, g_height, WF_RESIZABLE);
     if (!window) {

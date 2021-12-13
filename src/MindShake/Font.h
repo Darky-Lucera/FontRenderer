@@ -83,11 +83,18 @@ namespace MindShake {
 
             void                        DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_t *dst, uint32_t dstStride, int32_t posX, int32_t posY);
             void                        GetTextBox(const char *utf8, uint8_t textHeight, Rect *pRect);
+            
             void                        SetClipping(int32_t left, int32_t top, int32_t right, int32_t bottom)   { mLeft = left; mRight = right; mTop = top; mBottom = bottom; }
+
+            void                        SetAntialias(bool set)              { mUseAntialias = set;                      }
+            bool                        GetAntialias() const                { return mUseAntialias;                     }
+            void                        SetAntialiasWeight(int32_t value)   { mAntiAliasWeight = value;                 }
+            int32_t                     GetAntialiasWeight() const          { return mAntiAliasWeight;                  }
 
         protected:
             float                       GetScaleForHeight(uint8_t height)   { return GetDataForHeight(height).scale;    }
             uint32_t                    GetCodePointGlyph(uint32_t index)   { return GetCodePointData(index).glyph;     }
+            void                        AABlock(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
 
         protected:
             virtual int                         GetKerning(uint32_t char1, uint32_t char2) = 0;
@@ -114,6 +121,8 @@ namespace MindShake {
             int32_t                mBottom {  0xffff };
 
             int8_t                 mStatus { -1 };
+            int32_t                mAntiAliasWeight { 44 };
+            bool                   mUseAntialias { false };
     };
 
 } // end of namespace
