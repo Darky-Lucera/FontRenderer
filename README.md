@@ -33,28 +33,33 @@ font.DrawText(text, fontSize, color32, bufferDest, bufferDestStride, posX, posY)
 
 For getting the font glyphs the following libraries are used:
  * [stb_truetype](https://github.com/nothings/stb/blob/master/stb_truetype.h) (.ttf) :ok:
- * [libschrift](https://github.com/tomolt/libschrift) :ok: (.ttf, .otf)
- * [FreeType](https://freetype.org/) ❌ (not yet)
+ * [libschrift](https://github.com/tomolt/libschrift) (.ttf, .otf) :ok:
+ * [FreeType](https://freetype.org/) (not yet) ❌
 
 # How to use it
 
-Select the library you want to use into your project (stb_truetype, libschrift,  ~~FreeType~~) and drop the following files in your project:
+You have two options:
+- Use CMake and add_subdirectory() where you put fontRenderer as an external dependency.
+  Then link against fontRenderer lib as exampleRender does.
 
-- Font.h
-- Font.cpp
-- SkylineBinPack.h
-- SkylineBinPack.cpp
----
-**If you choose to use libschrift**
-- FontSFT.h
-- FontSFT.cpp
-- schrift.h
-- schrift.c
----
-**If you choose to use stb_truetype**
-- FontSTB.h
-- FontSTB.cpp
-- stb_truetype.h
+- Select the library you want to use into your project (stb_truetype, libschrift,  ~~FreeType~~) and drop the following files in your project:
+
+  - Font.h
+  - Font.cpp
+  - SkylineBinPack.h
+  - SkylineBinPack.cpp
+  - UTF8_Utils.h
+  ---
+  **If you choose to use libschrift**
+  - FontSFT.h
+  - FontSFT.cpp
+  - schrift.h
+  - schrift.c
+  ---
+  **If you choose to use stb_truetype**
+  - FontSTB.h
+  - FontSTB.cpp
+  - stb_truetype.h
 
 # Captures
 

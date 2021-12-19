@@ -9,7 +9,7 @@
 
 #include "Font.h"
 //-------------------------------------
-#include "libschrift/schrift.h"
+#include <libschrift/schrift.h>
 
 //-------------------------------------
 namespace MindShake {

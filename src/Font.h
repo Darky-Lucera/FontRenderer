@@ -7,7 +7,7 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
-#include <SkylineBinPack.h>
+#include "SkylineBinPack.h"
 //-------------------------------------
 #include <cstdint>
 #include <unordered_map>

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
-project(FontRenderer VERSION 0.1.0)
+project(FontRenderer VERSION 0.2.0)
 
-#dependencies
+# dependencies
 #--------------------------------------
 
 # MiniFB
@@ -13,7 +13,6 @@ add_subdirectory("dependencies/minifb" EXCLUDE_FROM_ALL)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
 
 # Set output directory
 #--------------------------------------
@@ -71,30 +70,42 @@ else()
     add_compile_options(-ffast-math)
 endif()
 
+#--------------------------------------
 set(SRC_FontRenderer
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/MindShake/Font.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/MindShake/Font.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/MindShake/FontSFT.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/MindShake/FontSFT.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/MindShake/FontSTB.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/MindShake/FontSTB.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/MindShake/SkylineBinPack.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/MindShake/SkylineBinPack.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/MindShake/UTF8_Utils.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Font.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Font.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSFT.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSFT.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/UTF8_Utils.h
+    #--
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/external/libschrift/schrift.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/external/libschrift/schrift.h
+    #--
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/external/stb/stb_truetype.h
 )
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" FILES ${SRC_FontRenderer})
 
-add_executable(exampleRender
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/exampleRender.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/libschrift/schrift.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/libschrift/schrift.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/stb/stb_truetype.h
+add_library(fontRenderer STATIC
     ${SRC_FontRenderer}
 )
-target_include_directories(exampleRender PRIVATE src)
-target_include_directories(exampleRender PRIVATE src/MindShake)
-target_include_directories(exampleRender PRIVATE dependencies)
-target_link_libraries(exampleRender minifb)
+target_include_directories(fontRenderer PUBLIC src)
+target_include_directories(fontRenderer PUBLIC src/external)
+target_link_libraries(fontRenderer minifb)
+
+#--------------------------------------
+set(SRC_ExampleRender
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/exampleRender.cpp
+)
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/tests" FILES ${SRC_ExampleRender})
+
+add_executable(exampleRender
+    ${SRC_ExampleRender}
+)
+target_link_libraries(exampleRender fontRenderer)
 
 # Organize Visual Studio Solution Folders
 #--------------------------------------
