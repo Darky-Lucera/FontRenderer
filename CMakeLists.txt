@@ -94,7 +94,6 @@ add_library(fontRenderer STATIC
 )
 target_include_directories(fontRenderer PUBLIC src)
 target_include_directories(fontRenderer PUBLIC src/external)
-target_link_libraries(fontRenderer minifb)
 
 #--------------------------------------
 set(SRC_ExampleRender
@@ -106,6 +105,7 @@ add_executable(exampleRender
     ${SRC_ExampleRender}
 )
 target_link_libraries(exampleRender fontRenderer)
+target_link_libraries(exampleRender minifb)
 
 # Organize Visual Studio Solution Folders
 #--------------------------------------
