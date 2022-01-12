@@ -14,7 +14,7 @@
 using namespace MindShake;
 
 //-------------------------------------
-FontSFT::FontSFT(const char *fontName) {
+FontSFT::FontSFT(const char *fontName) : Font(fontName) {
     mFont = sft_loadfile(fontName);
     if(mFont == nullptr) {
         fprintf(stderr, "Cannot open file: '%s'.\n", fontName);
@@ -22,11 +22,7 @@ FontSFT::FontSFT(const char *fontName) {
         return;
     }
 
-    // Init packer
-    mPacker.Init(512, 128, false);
-    mTexture = (uint8_t *) calloc(mPacker.GetWidth() * mPacker.GetHeight(), 1);
-    if(mTexture == nullptr) {
-        fprintf(stderr, "Not enough memory\n");
+    if(InitPacker() == false) {
         mStatus = -5;
         return;
     }
@@ -38,16 +34,9 @@ FontSFT::FontSFT(const char *fontName) {
     sft.font   = mFont;
     SFT_LMetrics metrics {};
     sft_lmetrics(&sft, &metrics);
-
-    mFontName = fontName;
     mAscent   = metrics.ascender;
     mDescent  = metrics.descender;
     mLineGap  = metrics.lineGap;
-
-    // Trash data
-    mHeightData[0]          = {};
-    mCodePointData[0]       = {};
-    mCodePointHeightData[0] = {};
 
     mStatus = 1;
 }
@@ -62,37 +51,6 @@ FontSFT::~FontSFT() {
         free(mTexture);
         mTexture = nullptr;
     }
-}
-
-//-------------------------------------
-const HeightData &
-FontSFT::GetDataForHeight(uint8_t height) {
-    if(mStatus < 0)
-        return mHeightData[0];
-
-    auto hd = mHeightData.find(height);
-    if(hd == mHeightData.end()) {
-        HeightData  heightData;
-
-        //SFT sft {};
-        //sft.xScale = height;
-        //sft.yScale = height;
-        //sft.font   = mFont;
-        //sft.flags  = SFT_DOWNWARD_Y;
-        //
-        //SFT_LMetrics metrics;
-        //sft_lmetrics(&sft, &metrics);
-
-        heightData.scale   = float(height) / (mAscent - mDescent);//sft_unitsPerEm(mFont);
-        heightData.ascent  = int(ceil(mAscent  * heightData.scale));
-        heightData.descent = int(ceil(mDescent * heightData.scale));
-        heightData.lineGap = int(ceil(mLineGap * heightData.scale));
-        mHeightData[height] = heightData;
-
-        hd = mHeightData.insert({height, heightData}).first;
-    }
-
-    return hd->second;
 }
 
 //-------------------------------------

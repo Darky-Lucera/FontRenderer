@@ -71,8 +71,8 @@ main(int argc, char *argv[]) {
     fontSFT.SetAntialias(true);
     fontSTB.SetAntialias(true);
 
-    fontSFT.SetAntialiasWeight(16);
-    fontSTB.SetAntialiasWeight(16);
+    //fontSFT.SetAntialiasWeight(16);
+    //fontSTB.SetAntialiasWeight(16);
 
     struct mfb_window *window = mfb_open_ex("Font Renderer", g_width, g_height, WF_RESIZABLE);
     if (!window) {

@@ -23,7 +23,6 @@ namespace MindShake {
         protected:
             int                         GetKerning(uint32_t char1, uint32_t char2) override;
 
-            const HeightData &          GetDataForHeight(uint8_t height) override;
             const CodePointData &       GetCodePointData(uint32_t index) override;
             const CodePointHeightData & GetCodePointDataForHeight(uint32_t index, uint8_t height) override;
 

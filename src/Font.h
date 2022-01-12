@@ -74,6 +74,7 @@ namespace MindShake {
             using ELevelChoiceHeuristic  = SkylineBinPack::ELevelChoiceHeuristic;
 
         public:
+            explicit                    Font(const char *fontName);
             uint8_t                     GetStatus() const                   { return mStatus;                           }
 
             const std::string &         GetFontName() const                 { return mFontName;                         }
@@ -92,14 +93,15 @@ namespace MindShake {
             int32_t                     GetAntialiasWeight() const          { return mAntiAliasWeight;                  }
 
         protected:
+            bool                        InitPacker();
             float                       GetScaleForHeight(uint8_t height)   { return GetDataForHeight(height).scale;    }
             uint32_t                    GetCodePointGlyph(uint32_t index)   { return GetCodePointData(index).glyph;     }
             void                        AABlock(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
+            const HeightData &          GetDataForHeight(uint8_t height);
 
         protected:
             virtual int                         GetKerning(uint32_t char1, uint32_t char2) = 0;
 
-            virtual const HeightData &          GetDataForHeight(uint8_t height) = 0;
             virtual const CodePointData &       GetCodePointData(uint32_t index) = 0;
             virtual const CodePointHeightData & GetCodePointDataForHeight(uint32_t index, uint8_t height) = 0;
 

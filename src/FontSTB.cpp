@@ -15,7 +15,7 @@
 using namespace MindShake;
 
 //-------------------------------------
-FontSTB::FontSTB(const char *fontName) {
+FontSTB::FontSTB(const char *fontName) : Font(fontName) {
     uint32_t    size;
 
     // Read font into memory
@@ -49,36 +49,32 @@ FontSTB::FontSTB(const char *fontName) {
         return;
     }
 
-    // Init packer
-    mPacker.Init(512, 128, false);
-    mTexture = (uint8_t *) calloc(mPacker.GetWidth() * mPacker.GetHeight(), 1);
-    if(mTexture == nullptr) {
-        fprintf(stderr, "Not enough memory\n");
+    if(InitPacker() == false) {
         mStatus = -5;
         return;
     }
 
-    mFontName = fontName;
     stbtt_GetFontVMetrics(&mInfo, &mAscent, &mDescent, &mLineGap);
 
-    // Trash data
-    mHeightData[0]          = {};
-    mCodePointData[0]       = {};
-    mCodePointHeightData[0] = {};
+    GetKerningTable();
 
+    mStatus = 1;
+}
+
+//-------------------------------------
+void 
+FontSTB::GetKerningTable() {
     int length = stbtt_GetKerningTableLength(&mInfo);
-    if(length > 0) {
+    if (length > 0) {
         stbtt_kerningentry *kernings = new stbtt_kerningentry[length];
         stbtt_GetKerningTable(&mInfo, kernings, length);
         mKerningData.reserve(size_t(length));
-        for(int k=0; k<length; ++k) {
+        for (int k = 0; k < length; ++k) {
             auto &current = kernings[k];
             mKerningData[(uint64_t(current.glyph1) << 32) | uint64_t(current.glyph2)] = current.advance;
         }
-        delete [] kernings;
+        delete[] kernings;
     }
-
-    mStatus = 1;
 }
 
 //-------------------------------------
@@ -91,28 +87,6 @@ FontSTB::~FontSTB() {
         free(mTexture);
         mTexture = nullptr;
     }
-}
-
-//-------------------------------------
-const HeightData &
-FontSTB::GetDataForHeight(uint8_t height) {
-    if(mStatus < 0)
-        return mHeightData[0];
-
-    auto hd = mHeightData.find(height);
-    if(hd == mHeightData.end()) {
-        HeightData  heightData;
-
-        heightData.scale   = float(height) / (mAscent - mDescent);//stbtt_ScaleForPixelHeight(&mInfo, float(height));
-        heightData.ascent  = int(ceil(mAscent  * heightData.scale));
-        heightData.descent = int(ceil(mDescent * heightData.scale));
-        heightData.lineGap = int(ceil(mLineGap * heightData.scale));
-        mHeightData[height] = heightData;
-
-        hd = mHeightData.insert({height, heightData}).first;
-    }
-
-    return hd->second;
 }
 
 //-------------------------------------

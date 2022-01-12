@@ -11,6 +11,30 @@
 using namespace MindShake;
 
 //-------------------------------------
+Font::Font(const char *fontName) {
+    mFontName = fontName;
+
+    // Trash data
+    mHeightData[0]          = {};
+    mCodePointData[0]       = {};
+    mCodePointHeightData[0] = {};
+}
+
+//-------------------------------------
+bool 
+Font::InitPacker() {
+    mPacker.Init(512, 128, false);
+    mTexture = (uint8_t *) calloc(mPacker.GetWidth() * mPacker.GetHeight(), 1);
+    if (mTexture == nullptr) {
+        fprintf(stderr, "Not enough memory\n");
+        mStatus = -5;
+        return false;
+    }
+
+    return true;
+}
+
+//-------------------------------------
 void
 Font::DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_t *dst, uint32_t dstStride, int32_t posX, int32_t posY) {
     if(utf8 == nullptr || textHeight == 0)
@@ -263,3 +287,26 @@ Font::AABlock(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint3
         offset += dstStride;
     }
 }
+
+//-------------------------------------
+const HeightData &
+Font::GetDataForHeight(uint8_t height) {
+    if(mStatus < 0)
+        return mHeightData[0];
+
+    auto hd = mHeightData.find(height);
+    if(hd == mHeightData.end()) {
+        HeightData  heightData;
+
+        heightData.scale   = float(height) / (mAscent - mDescent);
+        heightData.ascent  = int(ceil(mAscent  * heightData.scale));
+        heightData.descent = int(ceil(mDescent * heightData.scale));
+        heightData.lineGap = int(ceil(mLineGap * heightData.scale));
+        mHeightData[height] = heightData;
+
+        hd = mHeightData.insert({height, heightData}).first;
+    }
+
+    return hd->second;
+}
+
