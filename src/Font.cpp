@@ -7,6 +7,9 @@
 
 #include "Font.h"
 #include "UTF8_Utils.h"
+//-------------------------------------
+#include <algorithm>
+#include <cmath>
 
 using namespace MindShake;
 
@@ -21,7 +24,7 @@ Font::Font(const char *fontName) {
 }
 
 //-------------------------------------
-bool 
+bool
 Font::InitPacker() {
     mPacker.Init(512, 128, false);
     mTexture = (uint8_t *) calloc(mPacker.GetWidth() * mPacker.GetHeight(), 1);
@@ -158,7 +161,7 @@ Font::GetTextBox(const char *utf8, uint8_t textHeight, Rect *pRect) {
                 minY = currentY;
 
             currentX = data.x + offsetTextX;
-            right = data.rect.width;
+            right = std::max(data.rect.width, data.advanceWidth);
             if(maxX < currentX + right)
                 maxX = currentX + right;
             if(minX > currentX)
@@ -179,59 +182,51 @@ Font::GetTextBox(const char *utf8, uint8_t textHeight, Rect *pRect) {
 // TODO: Think where put these funcs...
 //---------------------------------
 static inline uint8_t
-GetAAColorClip(uint32_t _x, uint32_t _y, uint32_t _width, uint32_t _height, const uint8_t *_pImg, uint32_t _stride, int32_t _multiplier) {
-    uint32_t  offset;
+GetAAColorClip(int32_t x, int32_t y, int32_t width, int32_t height, const uint8_t *pImg, int32_t stride, int32_t center, int32_t border, int32_t corner) {
+    int32_t   offset;
     uint32_t  color;
-    int32_t   multiplier;
     int32_t   divisor;
 
-    offset = _x + _y * _stride;
+    offset  = x + y * stride;
 
-    multiplier = _multiplier;
-    divisor    = _multiplier + 4*4 + 1*4;
+    divisor = center + border * 4 + corner * 4;
 
-    color = 0;
-    if(_x > 0) {
-        color += 4 * _pImg[offset-1];
-
-        if(_y > 0) {
-            color += _pImg[offset-_stride - 1];
+    color = (divisor >> 1);
+    if(x > 0 && x <= width) {
+        if(y >= 0 && y < height) {
+            color += border * pImg[offset - 1];             // Left
         }
-
-        if(_y < _height-2) {
-            color += _pImg[offset+_stride - 1];
+        if(y > 0 && y <= height) {
+            color += corner * pImg[offset - stride - 1];    // Top Left
         }
-    }
-//    else
-//        multiplier += 4;
-
-    if(_x < _width - 2) {
-        color += 4 * _pImg[offset+1];
-
-        if(_y > 0) {
-            color += _pImg[offset-_stride + 1];
-        }
-
-        if(_y < _height-2) {
-            color += _pImg[offset+_stride + 1];
+        if(y >= -1 && y < height - 1) {
+            color += corner * pImg[offset + stride - 1];    // Bottom Left
         }
     }
-//    else
-//        multiplier += 4;
 
-    if(_y > 0) {
-        color += 4 * _pImg[offset-_stride];
+    if(x >= -1 && x < width - 1) {
+        if(y >= 0 && y < height) {
+            color += border * pImg[offset + 1];             // Right
+        }
+        if(y > 0 && y <= height) {
+            color += corner * pImg[offset - stride + 1];    // Top Right
+        }
+        if(y >= -1 && y < height - 1) {
+            color += corner * pImg[offset + stride + 1];    // Bottom Right
+        }
     }
-//    else
-//        multiplier += 2;
 
-    if(_y < _height-2) {
-        color += 4 * _pImg[offset+_stride];
+    if(x >= 0 && x < width) {
+        if(y >= 0 && y < height) {
+            color += center * pImg[offset];                 // Center
+        }
+        if(y > 0 && y <= height) {
+            color += border * pImg[offset - stride];        // Top
+        }
+        if(y >= -1 && y < height - 1) {
+            color += border * pImg[offset + stride];        // Bottom
+        }
     }
-//    else
-//        multiplier += 2;
-
-    color += multiplier * _pImg[offset];
     color /= divisor;
 
     return uint8_t(color);
@@ -239,27 +234,27 @@ GetAAColorClip(uint32_t _x, uint32_t _y, uint32_t _width, uint32_t _height, cons
 
 //---------------------------------
 static inline uint8_t
-GetAAColor(uint32_t _x, uint32_t _y, uint32_t _width, uint32_t _height, const uint8_t *_pImg, uint32_t _stride, int32_t _multiplier) {
+GetAAColor(uint32_t x, uint32_t y, uint32_t width, uint32_t height, const uint8_t *pImg, uint32_t stride, int32_t center, int32_t border, int32_t corner) {
     uint32_t  offset;
     uint32_t  color;
-    int32_t   multiplier;
     int32_t   divisor;
 
-    offset = _x + _y * _stride;
+    offset  = x + y * stride;
 
-    multiplier = _multiplier;
-    divisor    = _multiplier + 4*4 + 1*4;
+    divisor = center + border * 4 + corner * 4;
 
     color = 0;
-    color += 4 * _pImg[offset - 1];
-    color +=     _pImg[offset - _stride - 1];
-    color +=     _pImg[offset + _stride - 1];
-    color += 4 * _pImg[offset + 1];
-    color +=     _pImg[offset - _stride + 1];
-    color +=     _pImg[offset + _stride + 1];
-    color += 4 * _pImg[offset - _stride];
-    color += 4 * _pImg[offset + _stride];
-    color += multiplier * _pImg[offset];
+    color += corner * pImg[offset - stride - 1];    // Top Left
+    color += border * pImg[offset - stride    ];    // Top
+    color += corner * pImg[offset - stride + 1];    // Top Right
+
+    color += border * pImg[offset - 1];             // Left
+    color += border * pImg[offset + 1];             // Right
+    color += center * pImg[offset    ];             // Center
+
+    color += corner * pImg[offset + stride - 1];    // Bottom Left
+    color += border * pImg[offset + stride    ];    // Bottom
+    color += corner * pImg[offset + stride + 1];    // Bottom Right
     color /= divisor;
 
     return uint8_t(color);
@@ -273,17 +268,46 @@ Font::AABlock(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint3
                 
     offset = (height - 1) * dstStride;
     for (x = 0; x < width; ++x) {
-        dst[x] = GetAAColorClip(x, 0, width, height, src, width, mAntiAliasWeight);
-        dst[offset + x] = GetAAColorClip(x, height - 1, width, height, src, width, mAntiAliasWeight);
+        dst[x] = GetAAColorClip(x, 0, width, height, src, width, mAACenter, mAABorder, mAACorner);
+        dst[offset + x] = GetAAColorClip(x, height - 1, width, height, src, width, mAACenter, mAABorder, mAACorner);
     }
                 
     offset = dstStride;
     for (y = 1; y < height - 1; ++y) {
-        dst[offset] = GetAAColorClip(0, y, width, height, src, width, mAntiAliasWeight);
+        dst[offset] = GetAAColorClip(0, y, width, height, src, width, mAACenter, mAABorder, mAACorner);
         for (x = 1; x < width - 1; ++x) {
-            dst[offset + x] = GetAAColor(x, y, width, height, src, width, mAntiAliasWeight);
+            dst[offset + x] = GetAAColor(x, y, width, height, src, width, mAACenter, mAABorder, mAACorner);
         }
-        dst[offset + width - 1] = GetAAColorClip(width - 1, y, width, height, src, width, mAntiAliasWeight);
+        dst[offset + width - 1] = GetAAColorClip(width - 1, y, width, height, src, width, mAACenter, mAABorder, mAACorner);
+        offset += dstStride;
+    }
+}
+
+//-------------------------------------
+void
+Font::AABlockEx(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride) {
+    int32_t x, y;
+    int32_t offset, offsetY;
+
+    //memset(src, 255, width*height);
+    offset = (height) * dstStride;
+    for (y = -1; y < 1; ++y) {
+        offsetY = dstStride * (y + 1);
+        for (x = -1; x <= int32_t(width); ++x) {
+            dst[offsetY +          x + 1] = GetAAColorClip(x,          y, width, height, src, width, mAACenter, mAABorder, mAACorner);
+            dst[offsetY + offset + x + 1] = GetAAColorClip(x, height + y, width, height, src, width, mAACenter, mAABorder, mAACorner);
+        }
+    }
+
+    offset = dstStride * 2;
+    for (y = 1; y < int32_t(height - 1); ++y) {
+        dst[offset    ] = GetAAColorClip(-1, y, width, height, src, width, mAACenter, mAABorder, mAACorner);
+        dst[offset + 1] = GetAAColorClip( 0, y, width, height, src, width, mAACenter, mAABorder, mAACorner);
+        for (x = 1; x < int32_t(width - 1); ++x) {
+            dst[offset + x + 1] = GetAAColor(x, y, width, height, src, width, mAACenter, mAABorder, mAACorner);
+        }
+        dst[offset + dstStride - 2] = GetAAColorClip(width - 1, y, width, height, src, width, mAACenter, mAABorder, mAACorner);
+        dst[offset + dstStride - 1] = GetAAColorClip(width    , y, width, height, src, width, mAACenter, mAABorder, mAACorner);
         offset += dstStride;
     }
 }
@@ -299,9 +323,9 @@ Font::GetDataForHeight(uint8_t height) {
         HeightData  heightData;
 
         heightData.scale   = float(height) / (mAscent - mDescent);
-        heightData.ascent  = int(ceil(mAscent  * heightData.scale));
-        heightData.descent = int(ceil(mDescent * heightData.scale));
-        heightData.lineGap = int(ceil(mLineGap * heightData.scale));
+        heightData.ascent  = int(std::ceil(mAscent  * heightData.scale));
+        heightData.descent = int(std::ceil(mDescent * heightData.scale));
+        heightData.lineGap = int(std::ceil(mLineGap * heightData.scale));
         mHeightData[height] = heightData;
 
         hd = mHeightData.insert({height, heightData}).first;
@@ -309,4 +333,3 @@ Font::GetDataForHeight(uint8_t height) {
 
     return hd->second;
 }
-

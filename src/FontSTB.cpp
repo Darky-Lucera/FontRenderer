@@ -62,7 +62,20 @@ FontSTB::FontSTB(const char *fontName) : Font(fontName) {
 }
 
 //-------------------------------------
-void 
+FontSTB::~FontSTB() {
+    if(mFontBuffer != nullptr) {
+        free(mFontBuffer);
+        mFontBuffer = nullptr;
+    }
+
+    if(mTexture != nullptr) {
+        free(mTexture);
+        mTexture = nullptr;
+    }
+}
+
+//-------------------------------------
+void
 FontSTB::GetKerningTable() {
     int length = stbtt_GetKerningTableLength(&mInfo);
     if (length > 0) {
@@ -74,18 +87,6 @@ FontSTB::GetKerningTable() {
             mKerningData[(uint64_t(current.glyph1) << 32) | uint64_t(current.glyph2)] = current.advance;
         }
         delete[] kernings;
-    }
-}
-
-//-------------------------------------
-FontSTB::~FontSTB() {
-    if(mFontBuffer != nullptr) {
-        free(mFontBuffer);
-        mFontBuffer = nullptr;
-    }
-    if(mTexture != nullptr) {
-        free(mTexture);
-        mTexture = nullptr;
     }
 }
 
@@ -124,7 +125,7 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
     CodePointHeight cph;
     cph.codePoint = index;
     cph.height    = height;
-    
+
     auto cphd = mCodePointHeightData.find(cph.value);
     if(cphd == mCodePointHeightData.end()) {
         const CodePointData &codePoint = GetCodePointData(index);
@@ -132,21 +133,13 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
             return mCodePointHeightData[0];
         }
 
-        CodePointHeightData codePointHeight;
-
         float scale = GetScaleForHeight(height);
-        int x1, y1, x2, y2, w, h;
+        int x1, y1, x2, y2;
 
         stbtt_GetGlyphBitmapBox(&mInfo, codePoint.glyph, scale, scale, &x1, &y1, &x2, &y2);
 
-        codePointHeight.glyph           = codePoint.glyph;
-        codePointHeight.x               = x1;
-        codePointHeight.y               = y1;
-        codePointHeight.leftSideBearing = int(floor(codePoint.leftSideBearing * scale));
-        codePointHeight.advanceWidth    = int(ceil( codePoint.advanceWidth    * scale));
-
-        w = (x2 - x1);//codePointHeight.advanceWidth - codePointHeight.leftSideBearing;
-        h = (y2 - y1);
+        int w = (x2 - x1);
+        int h = (y2 - y1);
 
         // special case (' ')
         bool isEmpty = false;
@@ -158,6 +151,42 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
             h = 1;
             isEmpty = true;
         }
+
+        auto pixels = std::make_unique<uint8_t[]>(w * h);
+        if(isEmpty) {
+            int offset = 0;
+            for(int y=0; y<h; ++y) {
+                for(int x=0; x<w; ++x) {
+                    pixels[offset + x] = 0;
+                }
+                offset += mPacker.GetWidth();
+            }
+        }
+        else {
+            stbtt_MakeGlyphBitmap(&mInfo, pixels.get(), w, h, w, scale, scale, codePoint.glyph);
+
+            if(mUseAntialias) {
+                if(mAntialiasAllowEx) {
+                    auto dst = std::make_unique<uint8_t[]>((w + 2) * (h + 2));
+                    AABlockEx(pixels.get(), w, h, dst.get(), w + 2);
+                    std::swap(pixels, dst);
+                    w += 2;
+                    h += 2;
+                }
+                else {
+                    auto dst = std::make_unique<uint8_t[]>(w * h);
+                    AABlock(pixels.get(), w, h, dst.get(), w);
+                    std::swap(pixels, dst);
+                }
+            }
+        }
+
+        CodePointHeightData codePointHeight;
+        codePointHeight.glyph           = codePoint.glyph;
+        codePointHeight.x               = x1;
+        codePointHeight.y               = y1;
+        codePointHeight.leftSideBearing = int(floor(codePoint.leftSideBearing * scale));
+        codePointHeight.advanceWidth    = int(ceil( codePoint.advanceWidth    * scale));
 
         codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
         if(codePointHeight.rect.width <= 0) {
@@ -173,24 +202,12 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
             }
         }
 
-        size_t byteOffset = (codePointHeight.rect.y) * mPacker.GetWidth() + codePointHeight.rect.x;
-        uint8_t *dst = mTexture + byteOffset;
-        if(isEmpty) {
-            int offset = 0;
-            for(int y=0; y<h; ++y) {
-                for(int x=0; x<w; ++x) {
-                    dst[offset + x] = 0;
-                }
-                offset += mPacker.GetWidth();
-            }
-        }
-        else if(mUseAntialias == false) {
-            stbtt_MakeGlyphBitmap(&mInfo, dst, w, h, mPacker.GetWidth(), scale, scale, codePoint.glyph);
-        }
-        else {
-            auto src = std::make_unique<uint8_t[]>(w * h); 
-            stbtt_MakeGlyphBitmap(&mInfo, src.get(), w, h, w, scale, scale, codePoint.glyph);
-            AABlock(src.get(), w, h, dst, mPacker.GetWidth());
+        size_t byteOffset   = (codePointHeight.rect.y) * mPacker.GetWidth() + codePointHeight.rect.x;
+        size_t pixelsOffset = 0;
+        for(int y=0; y<h; ++y) {
+            memcpy(&mTexture[byteOffset], &pixels[pixelsOffset], w);
+            byteOffset   += mPacker.GetWidth();
+            pixelsOffset += w;
         }
 
         cphd = mCodePointHeightData.insert({cph.value, codePointHeight}).first;

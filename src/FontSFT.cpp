@@ -27,16 +27,7 @@ FontSFT::FontSFT(const char *fontName) : Font(fontName) {
         return;
     }
 
-    SFT sft {};
-    sft.xScale = sft_unitsPerEm(mFont);
-    sft.yScale = sft.xScale;
-    sft.flags  = SFT_DOWNWARD_Y;
-    sft.font   = mFont;
-    SFT_LMetrics metrics {};
-    sft_lmetrics(&sft, &metrics);
-    mAscent   = metrics.ascender;
-    mDescent  = metrics.descender;
-    mLineGap  = metrics.lineGap;
+    GetFontVMetrics();
 
     mStatus = 1;
 }
@@ -51,6 +42,22 @@ FontSFT::~FontSFT() {
         free(mTexture);
         mTexture = nullptr;
     }
+}
+
+//-------------------------------------
+void
+FontSFT::GetFontVMetrics() {
+    SFT sft {};
+    sft.xScale = sft_unitsPerEm(mFont);
+    sft.yScale = sft.xScale;
+    sft.flags  = SFT_DOWNWARD_Y;
+    sft.font   = mFont;
+    SFT_LMetrics metrics {};
+    sft_lmetrics(&sft, &metrics);
+
+    mAscent  = metrics.ascender;
+    mDescent = metrics.descender;
+    mLineGap = metrics.lineGap;
 }
 
 //-------------------------------------
@@ -105,8 +112,6 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
             return mCodePointHeightData[0];
         }
 
-        CodePointHeightData codePointHeight;
-
         SFT sft {};
         sft.xScale = height;
         sft.yScale = height;
@@ -117,52 +122,61 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
             return mCodePointHeightData[0];
         }
 
+        int w = metrics.minWidth;
+        int h = metrics.minHeight;
+
         // special case (' ')
         bool isEmpty = false;
-        if(metrics.minWidth == 0) {
-            metrics.minWidth = 1;
+        if(w == 0) {
+            w = 1;
             isEmpty = true;
         }
-        if(metrics.minHeight == 0) {
-            metrics.minHeight = 1;
+        if(h == 0) {
+            h = 1;
             isEmpty = true;
         }
 
-        SFT_Image img {};
-        img.width  = metrics.minWidth;
-        img.height = metrics.minHeight;
-        auto pixels = std::make_unique<uint8_t[]>(img.width * img.height); 
-        img.pixels = pixels.get();
+        auto pixels = std::make_unique<uint8_t[]>(w * h);
         if(isEmpty) {
             int offset = 0;
-            for(int y=0; y<img.height; ++y) {
-                for(int x=0; x<img.width; ++x) {
+            for(int y=0; y<h; ++y) {
+                for(int x=0; x<w; ++x) {
                     pixels[offset + x] = 0;
                 }
                 offset += mPacker.GetWidth();
             }
         }
         else {
+            SFT_Image img {};
+            img.width  = w;
+            img.height = h;
+	        img.pixels = pixels.get();
             if (sft_render(&sft, codePoint.glyph, img) < 0) {
                 return mCodePointHeightData[0];
             }
 
             if(mUseAntialias) {
-                auto dst = std::make_unique<uint8_t[]>(img.width * img.height); 
-                AABlock(pixels.get(), img.width, img.height, dst.get(), img.width);
-                std::swap(pixels, dst);
-                img.pixels = pixels.get();
+                if(mAntialiasAllowEx) {
+                    auto dst = std::make_unique<uint8_t[]>((w + 2) * (h + 2));
+                    AABlockEx(pixels.get(), w, h, dst.get(), w + 2);
+                    std::swap(pixels, dst);
+                    w += 2;
+                    h += 2;
+                }
+                else {
+                    auto dst = std::make_unique<uint8_t[]>(w * h);
+                    AABlock(pixels.get(), w, h, dst.get(), w);
+                    std::swap(pixels, dst);
+                }
             }
         }
 
+        CodePointHeightData codePointHeight;
         codePointHeight.glyph           = codePoint.glyph;
         codePointHeight.x               = 0;
         codePointHeight.y               = metrics.yOffset;
         codePointHeight.leftSideBearing = int(floor(metrics.leftSideBearing));
         codePointHeight.advanceWidth    = int(ceil( metrics.advanceWidth));
-
-        int w = img.width;
-        int h = img.height;
 
         codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
         if(codePointHeight.rect.width <= 0) {
@@ -181,7 +195,7 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
         size_t byteOffset   = (codePointHeight.rect.y) * mPacker.GetWidth() + codePointHeight.rect.x;
         size_t pixelsOffset = 0;
         for(int y=0; y<h; ++y) {
-            memcpy(&mTexture[byteOffset], &reinterpret_cast<const uint8_t *>(img.pixels)[pixelsOffset], w);
+            memcpy(&mTexture[byteOffset], &pixels[pixelsOffset], w);
             byteOffset   += mPacker.GetWidth();
             pixelsOffset += w;
         }

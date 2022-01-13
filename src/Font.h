@@ -84,19 +84,24 @@ namespace MindShake {
 
             void                        DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_t *dst, uint32_t dstStride, int32_t posX, int32_t posY);
             void                        GetTextBox(const char *utf8, uint8_t textHeight, Rect *pRect);
-            
+
             void                        SetClipping(int32_t left, int32_t top, int32_t right, int32_t bottom)   { mLeft = left; mRight = right; mTop = top; mBottom = bottom; }
 
             void                        SetAntialias(bool set)              { mUseAntialias = set;                      }
             bool                        GetAntialias() const                { return mUseAntialias;                     }
-            void                        SetAntialiasWeight(int32_t value)   { mAntiAliasWeight = value;                 }
-            int32_t                     GetAntialiasWeight() const          { return mAntiAliasWeight;                  }
+            void                        SetAntialiasAllowEx(bool set)       { mAntialiasAllowEx = set;                  }
+            bool                        GetAntialiasAllowEx() const         { return mAntialiasAllowEx;                 }
+            void                        SetAntialiasWeights(int32_t center, int32_t border, int32_t corner)     { mAACenter = center; mAABorder = border; mAACorner = corner;  }
+            int32_t                     GetAntialiasCenter() const          { return mAACenter;                         }
+            int32_t                     GetAntialiasBorder() const          { return mAABorder;                         }
+            int32_t                     GetAntialiasCorner() const          { return mAACorner;                         }
 
         protected:
             bool                        InitPacker();
             float                       GetScaleForHeight(uint8_t height)   { return GetDataForHeight(height).scale;    }
             uint32_t                    GetCodePointGlyph(uint32_t index)   { return GetCodePointData(index).glyph;     }
             void                        AABlock(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
+            void                        AABlockEx(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
             const HeightData &          GetDataForHeight(uint8_t height);
 
         protected:
@@ -123,8 +128,11 @@ namespace MindShake {
             int32_t                mBottom {  0xffff };
 
             int8_t                 mStatus { -1 };
-            int32_t                mAntiAliasWeight { 44 };
+            int32_t                mAACenter { 44 };
+            int32_t                mAABorder {  4 };
+            int32_t                mAACorner {  1 };
             bool                   mUseAntialias { false };
+            bool                   mAntialiasAllowEx { false };
     };
 
 } // end of namespace

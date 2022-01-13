@@ -21,6 +21,7 @@ namespace MindShake {
             virtual                     ~FontSFT();
 
         protected:
+            void                        GetFontVMetrics();
             int                         GetKerning(uint32_t char1, uint32_t char2) override;
 
             const CodePointData &       GetCodePointData(uint32_t index) override;

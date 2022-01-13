@@ -18,8 +18,13 @@ MindShake::FontSTB font("resources/Roboto-Regular.ttf");
 // Set the clipping (optional)
 font.SetClipping(left, top, right, bottom);
 
-// Enable Anti Alias
+// Enable antialias
 font.SetAntialias(true);
+font.SetAntialiasWeights(20, 4, 1); // Gausian
+font.SetAntialiasWeights(1, 1, 1);  // Mean
+
+// Allow antialias to extend one border pixel per glyph
+font.SetAntialiasAllowEx(true);
 
 // In case you need the dimensions of the future rendered text. For instance to horizontal align text...
 Rect rect;
@@ -28,6 +33,8 @@ font.GetTextBox(text, fontSize, &rect);
 // Draw a colored text of height fontSize in your buffer at pos (posX, posY)
 font.DrawText(text, fontSize, color32, bufferDest, bufferDestStride, posX, posY);
 ```
+
+**Note:** As we are rendering only once per glyph per fontSize, user must configure Antialias params at beginning.
 
 # Font Renderer external dependencies
 
@@ -65,4 +72,7 @@ You have two options:
 
 |Normal|AntiAlias|
 |---|---|
-|![](screenshots/capture.png)|![](screenshots/captureAA.png)|
+|![](screenshots/capture.png)|NO|
+|![](screenshots/captureAAin.png)|AA Gausian|
+|![](screenshots/captureAA.png)|AA Gausian (allow font extension)|
+|![](screenshots/captureAAm.png)|AA Mean (allow font extension)|

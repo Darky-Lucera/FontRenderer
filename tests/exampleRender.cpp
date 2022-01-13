@@ -10,33 +10,152 @@
     #include <unistd.h>
 #endif
 
-//#define kShowTexture
-#define kShowTextureSTB
-#define kShowTextureSFT
-
-#define kShhowClippingLines
-
-#define kShowBoundingBox
-
 //-------------------------------------
-static uint32_t g_width   = 512;
-static uint32_t g_height  = 256;
-static uint32_t *g_buffer = nullptr;
-static int32_t  g_left   = 0;
-static int32_t  g_top    = 0;
-static int32_t  g_right  = g_width;
-static int32_t  g_bottom = g_height;
+static uint32_t gWidth   = 512;
+static uint32_t gHeight  = 256;
+static uint32_t *gBuffer = nullptr;
+static int32_t  gLeft   = 0;
+static int32_t  gTop    = 0;
+static int32_t  gRight  = gWidth;
+static int32_t  gBottom = gHeight;
+
+static bool     gShowBoundingBox   = true;
+static bool     gShowClippingLines = true;
+static bool     gShowTexture       = false;
+static int      gShowTextureId     = 1;
 
 //-------------------------------------
 using Rect = MindShake::SkylineBinPack::Rect;
 
 //-------------------------------------
-void
+static void
 resize(struct mfb_window *window, int width, int height) {
     (void) window;
-    g_width  = width;
-    g_height = height;
-    g_buffer = (uint32_t *) realloc(g_buffer, g_width * g_height * 4);
+    gWidth  = width;
+    gHeight = height;
+    gBuffer = (uint32_t *) realloc(gBuffer, gWidth * gHeight * 4);
+}
+
+//-------------------------------------
+static void
+keyboard(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool isPressed) {
+    if(isPressed)
+        return;
+
+    switch(key) {
+        case KB_KEY_ESCAPE:
+            mfb_close(window);
+            break;
+
+        case KB_KEY_B:
+            gShowBoundingBox = !gShowBoundingBox;
+            break;
+
+        case KB_KEY_C:
+            gShowClippingLines = !gShowClippingLines;
+            break;
+
+        case KB_KEY_T:
+            gShowTexture = !gShowTexture;
+            break;
+
+        case KB_KEY_1:
+            gShowTextureId = 1;
+            break;
+
+        case KB_KEY_2:
+            gShowTextureId = 2;
+            break;
+
+        case KB_KEY_3:
+            //gShowTextureId = 3;
+            break;
+    }
+}
+
+//-------------------------------------
+void 
+RenderBoundingBox(uint32_t posX1, uint32_t posY1, Rect &rectSFT) {
+    int32_t left = posX1 + rectSFT.x;
+    int32_t top  = posY1 + rectSFT.y;
+
+    for (uint32_t x = left; x < posX1 + rectSFT.width; ++x) {
+        gBuffer[top * gWidth + x] = MFB_RGB(0, 255, 0);
+        if ((top + rectSFT.height) < int32_t(gHeight))
+            gBuffer[(posY1 + rectSFT.height) * gWidth + x] = MFB_RGB(0, 255, 0);
+    }
+
+    for (uint32_t y = top; y < posY1 + rectSFT.height; ++y) {
+        gBuffer[y * gWidth + left] = MFB_RGB(0, 255, 0);
+        if (left + rectSFT.width < int32_t(gWidth))
+            gBuffer[y * gWidth + posX1 + rectSFT.width - 1] = MFB_RGB(0, 255, 0);
+    }
+}
+
+//-------------------------------------
+void 
+RenderTexture(const MindShake::FontSTB &fontSTB, const MindShake::FontSFT &fontSFT) {
+    uint32_t offset = 0;
+    uint32_t offsetT = 0;
+    uint32_t minX, minY;
+    uint8_t *texture = nullptr;
+
+    if (gShowTextureId == 1) {
+        minX = std::min<uint32_t>(gWidth, fontSTB.GetTextureWidth());
+        minY = std::min<uint32_t>(gHeight, fontSTB.GetTextureHeight());
+        texture = fontSTB.GetTexture();
+    }
+    else {
+        minX = std::min<uint32_t>(gWidth, fontSFT.GetTextureWidth());
+        minY = std::min<uint32_t>(gHeight, fontSFT.GetTextureHeight());
+        texture = fontSFT.GetTexture();
+    }
+
+    for (uint32_t y = 0; y < minY; ++y) {
+        for (uint32_t x = 0; x < minX; ++x) {
+            uint8_t pixel = texture[offsetT + x];
+            gBuffer[offset + x] = MFB_RGB(pixel, pixel, pixel);
+        }
+        offset += gWidth;
+        if (gShowTextureId == 1)
+            offsetT += fontSTB.GetTextureWidth();
+        else
+            offsetT += fontSFT.GetTextureWidth();
+    }
+}
+
+//-------------------------------------
+void 
+RenderClippingLines() {
+    for (uint32_t x = 0; x < gWidth; ++x) {
+        gBuffer[gTop * gWidth + x] = MFB_RGB(255, 0, 0);
+        if (gBottom < int32_t(gHeight))
+            gBuffer[gBottom * gWidth + x] = MFB_RGB(255, 0, 0);
+    }
+
+    for (uint32_t y = 0; y < gHeight; ++y) {
+        gBuffer[y * gWidth + gLeft] = MFB_RGB(255, 0, 0);
+        if (gRight < int32_t(gWidth))
+            gBuffer[y * gWidth + gRight] = MFB_RGB(255, 0, 0);
+    }
+}
+
+//-------------------------------------
+float
+GetFPS() {
+    static struct mfb_timer *timer = mfb_timer_create();
+    static uint32_t frameCount = 0;    
+    static float fps = 60.0f;
+
+    ++frameCount;
+    if(frameCount >= 60) {
+        frameCount = 0;
+        double time = mfb_timer_now(timer);
+        mfb_timer_reset(timer);
+        fps = time * 60.0f;
+    }
+
+    return fps;
 }
 
 //-------------------------------------
@@ -56,146 +175,90 @@ int
 main(int argc, char *argv[]) {
     SetAppDirectory(argv[0]);
     struct mfb_timer *timer = mfb_timer_create();
+
     // Visual Studio does not convert multiple-byte characters with the u8 string literal.
     // This trick fixes some of them but, sadly, not all.
-    std::string text1 = MindShake::UTF32_2_UTF8(U"P ¡Hola\nPepe!\n¿Cómo\nestás?");
-    std::string text2 = MindShake::UTF32_2_UTF8(U"STB:\n") + text1;
-    text1 = MindShake::UTF32_2_UTF8(U"SFT:\n") + text1;
+    std::string text1 = u8"¡Hola\nPepe!\n¿Cómo\nestás?";//MindShake::UTF32_2_UTF8(U"¡Hola\nPepe!\n¿Cómo\nestás?");
+    std::string text2 = "STB:\n" + text1;
+    text1 = "SFT:\n" + text1;
 
     MindShake::FontSFT fontSFT("resources/Roboto-Regular.ttf");
     MindShake::FontSTB fontSTB("resources/Roboto-Regular.ttf");
 
-    fontSFT.SetClipping(g_left, g_top, g_right, g_bottom);
-    fontSTB.SetClipping(g_left, g_top, g_right, g_bottom);
+    fontSFT.SetClipping(gLeft, gTop, gRight, gBottom);
+    fontSTB.SetClipping(gLeft, gTop, gRight, gBottom);
 
     fontSFT.SetAntialias(true);
     fontSTB.SetAntialias(true);
 
-    //fontSFT.SetAntialiasWeight(16);
-    //fontSTB.SetAntialiasWeight(16);
+    fontSFT.SetAntialiasWeights(20, 4, 1);
+    fontSTB.SetAntialiasWeights(20, 4, 1);
 
-    struct mfb_window *window = mfb_open_ex("Font Renderer", g_width, g_height, WF_RESIZABLE);
+    struct mfb_window *window = mfb_open_ex("Font Renderer", gWidth, gHeight, WF_RESIZABLE);
     if (!window) {
         fprintf(stderr, "Cannot create window!\n");
         return -1;
     }
 
-    g_buffer = (uint32_t *) calloc(g_width * g_height * 4, 1);
+    gBuffer = (uint32_t *) calloc(gWidth * gHeight * 4, 1);
+    
     mfb_set_resize_callback(window, resize);
+    mfb_set_keyboard_callback(window, keyboard);
 
     mfb_update_state state;
     do {
-        memset(g_buffer, 0, g_width*g_height*4);
+        memset(gBuffer, 0, gWidth*gHeight*4);
 
-#if defined(kShowTexture)
-        uint32_t offset  = 0;
-        uint32_t offsetT = 0;
-    #if defined(kShowTextureSTB)
-        uint32_t minX = std::min<uint32_t>(g_width, fontSTB.GetTextureWidth());
-        uint32_t minY = std::min<uint32_t>(g_height, fontSTB.GetTextureHeight());
-        uint8_t *texture = fontSTB.GetTexture();
-    #else
-        uint32_t minX = std::min<uint32_t>(g_width, fontSFT.GetTextureWidth());
-        uint32_t minY = std::min<uint32_t>(g_height, fontSFT.GetTextureHeight());
-        uint8_t *texture = fontSFT.GetTexture();
-    #endif
-        for(uint32_t y=0; y<minY; ++y) {
-            for(uint32_t x=0; x<minX; ++x) {
-                uint8_t pixel =texture[offsetT + x];
-                g_buffer[offset + x] = MFB_RGB(pixel, pixel, pixel);
-            }
-            offset += g_width;
-    #if defined(kShowTextureSTB)
-            offsetT += fontSTB.GetTextureWidth();
-    #else
-            offsetT += fontSFT.GetTextureWidth();
-    #endif
-        }
-#endif
-
-#if defined(kShhowClippingLines)
-        for(uint32_t x=0; x<g_width; ++x) {
-            g_buffer[g_top    * g_width + x] = MFB_RGB(255, 0, 0);
-            if(g_bottom < int32_t(g_height))
-                g_buffer[g_bottom * g_width + x] = MFB_RGB(255, 0, 0);
+        if(gShowTexture) {
+            RenderTexture(fontSTB, fontSFT);
         }
 
-        for(uint32_t y=0; y<g_height; ++y) {
-            g_buffer[y * g_width + g_left]  = MFB_RGB(255, 0, 0);
-            if(g_right < int32_t(g_width))
-                g_buffer[y * g_width + g_right] = MFB_RGB(255, 0, 0);
+        if(gShowClippingLines) {
+            RenderClippingLines();
         }
-#endif
 
         uint32_t posX1 = 10, posY1 = 10;
-        uint32_t posX2 = 160, posY2 = 10;
-        int32_t  left, top;
+        uint32_t posX2 = gWidth / 2, posY2 = 10;
 
-#if defined(kShowBoundingBox)
-        Rect rectSFT{};
-        fontSFT.GetTextBox(text1.c_str(), 32, &rectSFT);
+        if(gShowBoundingBox) {
+            Rect rectSFT{};
+            Rect rectSTB{};
 
-        left = posX1 + rectSFT.x;
-        top  = posY1 + rectSFT.y;
-        for(uint32_t x=left; x<posX1 + rectSFT.width; ++x) {
-            g_buffer[top * g_width + x] = MFB_RGB(0, 255, 0);
-            if((top + rectSFT.height) < int32_t(g_height))
-                g_buffer[(posY1 + rectSFT.height) * g_width + x] = MFB_RGB(0, 255, 0);
+            fontSFT.GetTextBox(text1.c_str(), 32, &rectSFT);
+            fontSTB.GetTextBox(text2.c_str(), 32, &rectSTB);
+
+            RenderBoundingBox(posX1, posY1, rectSFT);
+            RenderBoundingBox(posX2, posY2, rectSTB);
         }
-
-        for(uint32_t y=top; y<posY1 + rectSFT.height; ++y) {
-            g_buffer[y * g_width + left]  = MFB_RGB(0, 255, 0);
-            if(left + rectSFT.width < int32_t(g_width))
-                g_buffer[y * g_width + posX1 + rectSFT.width-1] = MFB_RGB(0, 255, 0);
-        }
-#endif
-
-#if defined(kShowBoundingBox)
-        Rect rectSTB{};
-        fontSTB.GetTextBox(text2.c_str(), 32, &rectSTB);
-
-        left = posX2 + rectSTB.x;
-        top  = posY2 + rectSTB.y;
-        for(uint32_t x=left; x<posX2 + rectSTB.width; ++x) {
-            g_buffer[top * g_width + x] = MFB_RGB(0, 255, 0);
-            if((top + rectSTB.height) < int32_t(g_height))
-                g_buffer[(posY2 + rectSTB.height) * g_width + x] = MFB_RGB(0, 255, 0);
-        }
-
-        for(uint32_t y=top; y<posY2 + rectSTB.height; ++y) {
-            g_buffer[y * g_width + left]  = MFB_RGB(0, 255, 0);
-            if(left + rectSTB.width < int32_t(g_width))
-                g_buffer[y * g_width + posX2 + rectSTB.width-1] = MFB_RGB(0, 255, 0);
-        }
-#endif
-        size_t total = 1024;
 
         double s1 = mfb_timer_now(timer);
-        for(size_t i=0; i<total; ++i) {
-            fontSFT.DrawText(text1.c_str(), 32, 0xff7f7f, g_buffer, g_width, posX1, posY1);
-        }
+        fontSFT.DrawText(text1.c_str(), 32, 0xff7f7f, gBuffer, gWidth, posX1, posY1);
         double e1 = mfb_timer_now(timer);
 
         double s2 = mfb_timer_now(timer);
-        for(size_t i=0; i<total; ++i) {
-            fontSTB.DrawText(text2.c_str(), 32, 0x7f7fff, g_buffer, g_width, posX2, posY2);
-        }
+        fontSTB.DrawText(text2.c_str(), 32, 0x7f7fff, gBuffer, gWidth, posX2, posY2);
         double e2 = mfb_timer_now(timer);
 
         char buffer[256];
-        snprintf(buffer, sizeof(buffer), "Time: %f - %f (%d)\n", float(e1 - s1), float(e2 - s2), int(total));
+        snprintf(buffer, sizeof(buffer), "Time: %f ms - %f ms\n", float(e1 - s1) * 1000.0f, float(e2 - s2) * 1000.0f);
+        //snprintf(buffer, sizeof(buffer), "Time: %f ms - %f ms\n", 0.0762f, 0.0624f); // For capturing pictures
 
-        fontSFT.DrawText(buffer, 20, 0xffffff, g_buffer, g_width, 0, g_height - 32);
+        fontSFT.DrawText(buffer, 20, 0xffffff, gBuffer, gWidth, 0, gHeight - 32);
 
-        state = mfb_update_ex(window, g_buffer, g_width, g_height);
+        Rect rect{};
+        snprintf(buffer, sizeof(buffer), "FPS: %.2f", GetFPS());
+        fontSFT.GetTextBox(buffer, 12, &rect);
+        fontSFT.DrawText(buffer, 12, 0x7fff7f, gBuffer, gWidth, gWidth - rect.width - 1, gHeight - rect.height - 1);
+
+        state = mfb_update_ex(window, gBuffer, gWidth, gHeight);
         if (state != STATE_OK) {
             window = nullptr;
             break;
         }
     } while(mfb_wait_sync(window));
 
-    free(g_buffer);
-    g_buffer = nullptr;
+    free(gBuffer);
+    gBuffer = nullptr;
 
     return 0;
 }
