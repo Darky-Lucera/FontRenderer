@@ -46,7 +46,7 @@ resize(struct mfb_window *window, int width, int height) {
 }
 
 //-------------------------------------
-static void 
+static void
 RenderBoundingBox(uint32_t posX1, uint32_t posY1, Rect &rect) {
     int32_t left = posX1 + rect.x;
     int32_t top  = posY1 + rect.y;
@@ -65,7 +65,7 @@ RenderBoundingBox(uint32_t posX1, uint32_t posY1, Rect &rect) {
 }
 
 //-------------------------------------
-static void 
+static void
 RenderTexture(const MindShake::FontSTB &fontSTB, const MindShake::FontSFT &fontSFT) {
     uint32_t offset = 0;
     uint32_t offsetT = 0;
@@ -97,7 +97,7 @@ RenderTexture(const MindShake::FontSTB &fontSTB, const MindShake::FontSFT &fontS
 }
 
 //-------------------------------------
-static void 
+static void
 RenderClippingLines() {
     for (uint32_t x = 0; x < gWidth; ++x) {
         gBuffer[gClipTop * gWidth + x] = MFB_RGB(255, 0, 0);
@@ -116,7 +116,7 @@ RenderClippingLines() {
 static float
 GetFPS() {
     static struct mfb_timer *timer = mfb_timer_create();
-    static uint32_t frameCount = 0;    
+    static uint32_t frameCount = 0;
     static float fps = 60.0f;
 
     ++frameCount;
@@ -173,7 +173,7 @@ main(int argc, char *argv[]) {
     }
 
     gBuffer = (uint32_t *) calloc(gWidth * gHeight * 4, 1);
-    
+
     // Events
     mfb_set_resize_callback(window, resize);
     mfb_set_keyboard_callback([&fontSFT, &fontSTB](struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool isPressed) {
@@ -193,11 +193,11 @@ main(int argc, char *argv[]) {
 
             case KB_KEY_RIGHT:
                 if(gSelectedBorderH == ClipBorder::Left) {
-                    if(gClipLeft < gWidth && gClipLeft < gClipRight)
+                    if(gClipLeft < int32_t(gWidth) && gClipLeft < gClipRight)
                         ++gClipLeft;
                 }
                 else {
-                    if(gClipRight < gWidth)
+                    if(gClipRight < int32_t(gWidth))
                         ++gClipRight;
                 }
                 fontSFT.SetClipping(gClipLeft, gClipTop, gClipRight, gClipBottom);
@@ -206,11 +206,11 @@ main(int argc, char *argv[]) {
 
             case KB_KEY_DOWN:
                 if(gSelectedBorderV == ClipBorder::Top) {
-                    if(gClipTop < gHeight && gClipTop < gClipBottom)
+                    if(gClipTop < int32_t(gHeight) && gClipTop < gClipBottom)
                         ++gClipTop;
                 }
                 else {
-                    if(gClipBottom < gHeight)
+                    if(gClipBottom < int32_t(gHeight))
                         ++gClipBottom;
                 }
                 fontSFT.SetClipping(gClipLeft, gClipTop, gClipRight, gClipBottom);
@@ -321,11 +321,11 @@ main(int argc, char *argv[]) {
         }
 
         double s1 = mfb_timer_now(timer);
-        fontSFT.DrawText(text1.c_str(), 32, 0xffff7f7f, gBuffer, gWidth, posX1, posY1);
+        fontSFT.DrawText(text1.c_str(), 32, 0xffff3f3f, gBuffer, gWidth, posX1, posY1);
         double e1 = mfb_timer_now(timer);
 
         double s2 = mfb_timer_now(timer);
-        fontSTB.DrawText(text2.c_str(), 32, 0xff7f7fff, gBuffer, gWidth, posX2, posY2);
+        fontSTB.DrawText(text2.c_str(), 32, 0xff3f3fff, gBuffer, gWidth, posX2, posY2);
         double e2 = mfb_timer_now(timer);
 
         char buffer[256];
@@ -336,7 +336,7 @@ main(int argc, char *argv[]) {
         Rect rect{};
         snprintf(buffer, sizeof(buffer), "FPS: %.2f", GetFPS());
         fontSFT.GetTextBox(buffer, 12, &rect);
-        fontSFT.DrawText(buffer, 12, 0xff0f3f0f, gBuffer, gWidth, gWidth - rect.width - 1, gHeight - rect.height - 1);
+        fontSFT.DrawText(buffer, 12, 0xff003f00, gBuffer, gWidth, gWidth - rect.width - 1, gHeight - rect.height - 1);
 
         state = mfb_update_ex(window, gBuffer, gWidth, gHeight);
         if (state != STATE_OK) {

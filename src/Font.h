@@ -130,7 +130,7 @@ namespace MindShake {
             int32_t                mBottom {  0xffff };
 
             int8_t                 mStatus { -1 };
-            int32_t                mAACenter { 44 };
+            int32_t                mAACenter { 20 };
             int32_t                mAABorder {  4 };
             int32_t                mAACorner {  1 };
             bool                   mUseAntialias { false };

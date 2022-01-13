@@ -10,6 +10,7 @@
 //-------------------------------------
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 using namespace MindShake;
 
@@ -24,10 +25,10 @@ Font::Font(const char *fontName) {
 }
 
 //-------------------------------------
-void                        
+void
 Font::Reset() {
     mPacker.Reset();
-    
+
     mCodePointHeightData.clear();
     mCodePointHeightData[0] = {};
 
@@ -115,14 +116,14 @@ Font::DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_t *d
                     for(int texY=minY; texY<maxY; ++texY) {
                         for(int texX=minX, dstX=0; texX<maxX; ++texX, ++dstX) {
                             if(mTexture[offsetTexture + texX] != 0) {
-                                uint32_t grey    = uint32_t((mTexture[offsetTexture + texX] * fontColor.a + 255) >> 8);
-                                uint32_t invGrey = 256 - grey;
+                                uint32_t grey    = uint32_t((mTexture[offsetTexture + texX] * fontColor.a) / 255);
+                                uint32_t invGrey = 255 - grey;
 
                                 Color32  &dstColor = *reinterpret_cast<Color32 *>(&dst[offsetDst + dstX]);
-                                dstColor.b = ((fontColor.b * grey) + (dstColor.b * invGrey)) >> 8;
-                                dstColor.g = ((fontColor.g * grey) + (dstColor.g * invGrey)) >> 8;
-                                dstColor.r = ((fontColor.r * grey) + (dstColor.r * invGrey)) >> 8;
-                                dstColor.a = ((grey) + (dstColor.a * invGrey)) >> 8;
+                                dstColor.b = ((fontColor.b * grey) + (dstColor.b * invGrey)) / 255;
+                                dstColor.g = ((fontColor.g * grey) + (dstColor.g * invGrey)) / 255;
+                                dstColor.r = ((fontColor.r * grey) + (dstColor.r * invGrey)) / 255;
+                                dstColor.a = 255;
                             }
                         }
                         offsetTexture += mPacker.GetWidth();
@@ -276,13 +277,13 @@ void
 Font::AABlock(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride) {
     uint32_t x, y;
     uint32_t offset;
-                
+
     offset = (height - 1) * dstStride;
     for (x = 0; x < width; ++x) {
         dst[x] = GetAAColorClip(x, 0, width, height, src, width, mAACenter, mAABorder, mAACorner);
         dst[offset + x] = GetAAColorClip(x, height - 1, width, height, src, width, mAACenter, mAABorder, mAACorner);
     }
-                
+
     offset = dstStride;
     for (y = 1; y < height - 1; ++y) {
         dst[offset] = GetAAColorClip(0, y, width, height, src, width, mAACenter, mAABorder, mAACorner);
