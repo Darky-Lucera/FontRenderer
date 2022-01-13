@@ -27,6 +27,21 @@ namespace MindShake {
     }
 
     //---------------------------------
+    void
+    SkylineBinPack::Reset() {
+        SkylineNode	node;
+
+        mUsedSurfaceArea = 0;
+
+        mSkyLine.clear();
+
+        node.x     = 0;
+        node.y     = 0;
+        node.width = mBinWidth;
+        mSkyLine.push_back(node);
+    }
+
+    //---------------------------------
     bool
     SkylineBinPack::ResizeBin(uint32_t width, uint32_t height) {
         SkylineNode node;

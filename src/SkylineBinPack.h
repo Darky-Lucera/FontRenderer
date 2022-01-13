@@ -46,6 +46,7 @@ namespace MindShake {
 
             // (Re)initializes the packer to an empty bin of width x height units.
             void	    Init(uint32_t width, uint32_t height, bool allowRotation = true);
+            void        Reset();
 
             // Resizes the Bin (if the new size is greatest)
             bool	    ResizeBin(uint32_t width, uint32_t height);

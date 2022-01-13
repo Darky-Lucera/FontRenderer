@@ -24,6 +24,17 @@ Font::Font(const char *fontName) {
 }
 
 //-------------------------------------
+void                        
+Font::Reset() {
+    mPacker.Reset();
+    
+    mCodePointHeightData.clear();
+    mCodePointHeightData[0] = {};
+
+    memset(mTexture, 0, mPacker.GetWidth() * mPacker.GetHeight());
+}
+
+//-------------------------------------
 bool
 Font::InitPacker() {
     mPacker.Init(512, 128, false);
@@ -49,7 +60,7 @@ Font::DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_t *d
     int32_t  currentX, currentY;
     int32_t  minX, maxX, minY, maxY;
 
-    Color32 &fontColor = *reinterpret_cast<Color32 *>(&color);
+    Color32 fontColor = *reinterpret_cast<Color32 *>(&color);
 
     const HeightData &heightData = GetDataForHeight(textHeight);
 
@@ -104,14 +115,14 @@ Font::DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_t *d
                     for(int texY=minY; texY<maxY; ++texY) {
                         for(int texX=minX, dstX=0; texX<maxX; ++texX, ++dstX) {
                             if(mTexture[offsetTexture + texX] != 0) {
-                                uint32_t grey    = uint32_t(mTexture[offsetTexture + texX]) + 1;
+                                uint32_t grey    = uint32_t((mTexture[offsetTexture + texX] * fontColor.a + 255) >> 8);
                                 uint32_t invGrey = 256 - grey;
 
                                 Color32  &dstColor = *reinterpret_cast<Color32 *>(&dst[offsetDst + dstX]);
                                 dstColor.b = ((fontColor.b * grey) + (dstColor.b * invGrey)) >> 8;
                                 dstColor.g = ((fontColor.g * grey) + (dstColor.g * invGrey)) >> 8;
                                 dstColor.r = ((fontColor.r * grey) + (dstColor.r * invGrey)) >> 8;
-                                dstColor.a = ((fontColor.a * grey) + (dstColor.a * invGrey)) >> 8;
+                                dstColor.a = ((grey) + (dstColor.a * invGrey)) >> 8;
                             }
                         }
                         offsetTexture += mPacker.GetWidth();

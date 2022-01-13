@@ -75,7 +75,9 @@ namespace MindShake {
 
         public:
             explicit                    Font(const char *fontName);
+            
             uint8_t                     GetStatus() const                   { return mStatus;                           }
+            void                        Reset();                            // Remove all rendered glyphs and associated data!
 
             const std::string &         GetFontName() const                 { return mFontName;                         }
             uint8_t *                   GetTexture() const                  { return mTexture;                          }
