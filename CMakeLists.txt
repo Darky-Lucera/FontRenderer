@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(FontRenderer VERSION 0.3.0)
+project(FontRenderer VERSION 0.3.1)
 
 # Options
 #--------------------------------------
@@ -95,6 +95,8 @@ endif()
 set(SRC_FontRenderer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Font.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Font.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontC.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontC.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSFT.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSFT.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.cpp
@@ -130,9 +132,22 @@ if(FONTRENDERER_BUILD_EXAMPLES)
     )
     target_link_libraries(exampleRender fontRenderer)
     target_link_libraries(exampleRender minifb)
+
+    set(SRC_ExampleRenderC
+        ${CMAKE_CURRENT_SOURCE_DIR}/examples/exampleRenderC.c
+    )
+    source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/examples" FILES ${SRC_ExampleRenderC})
+
+    add_executable(exampleRenderC
+        ${SRC_ExampleRenderC}
+    )
+    target_link_libraries(exampleRenderC fontRenderer)
+    target_link_libraries(exampleRenderC minifb)
+
     # A DJGPP program reopens its own file through a truncated path, so the name must already fit in 8.3.
     if(DJGPP)
         set_target_properties(exampleRender PROPERTIES OUTPUT_NAME "example")
+        set_target_properties(exampleRenderC PROPERTIES OUTPUT_NAME "examplec")
     endif()
 endif()
 
@@ -146,6 +161,8 @@ if(FONTRENDERER_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testHelpers.h
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testDrawText.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFont.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFontC.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFontC.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testSkylineBinPack.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testUTF8.cpp
     )

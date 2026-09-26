@@ -7,7 +7,6 @@
 
 #include "FontSFT.h"
 //-------------------------------------
-#include <cstdio>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -23,7 +22,6 @@ FontSFT::FontSFT(const char *fontName) : Font(fontName) {
 
     mFont.reset(sft_loadmem(mFontFile.GetData(), mFontFile.GetSize()));
     if(mFont == nullptr) {
-        fprintf(stderr, "Invalid font: '%s'.\n", fontName);
         mStatus = EStatus::InvalidFont;
         return;
     }

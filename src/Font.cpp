@@ -12,7 +12,6 @@
 #include <cassert>
 #include <cmath>
 #include <math.h>      // ::lround, as DJGPP has no std::lround
-#include <cstdio>
 #include <cstring>
 #include <new>
 
@@ -66,17 +65,14 @@ Font::LoadFile(const char *fileName) {
             return true;
 
         case MappedFile::EError::CannotOpen:
-            fprintf(stderr, "Cannot open file: '%s'.\n", fileName);
             mStatus = EStatus::CannotOpenFile;
             return false;
 
         case MappedFile::EError::CannotRead:
-            fprintf(stderr, "Cannot read file: '%s'.\n", fileName);
             mStatus = EStatus::CannotReadFile;
             return false;
 
         case MappedFile::EError::OutOfMemory:
-            fprintf(stderr, "Not enough memory\n");
             mStatus = EStatus::OutOfMemory;
             return false;
     }
@@ -92,7 +88,6 @@ Font::InitPacker() {
         mTexture.assign(size_t(GetTextureWidth()) * GetTextureHeight(), 0);
     }
     catch(const std::bad_alloc &) {
-        fprintf(stderr, "Not enough memory\n");
         mStatus = EStatus::OutOfMemory;
         return false;
     }

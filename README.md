@@ -16,7 +16,7 @@ uint32_t   color32 = 0xffff0000;   // ARGB. With alpha 0 the text is invisible
 // Load a font
 MindShake::FontSTB font("resources/Roboto-Regular.ttf");
 
-// Set the clipping (optional, but without it the text must fit inside the buffer)
+// Set the clipping (optional, but without it the user has the responsibility to fit the text inside the buffer)
 font.SetClipping(left, top, right, bottom);
 
 // Enable antialias

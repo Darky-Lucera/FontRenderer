@@ -294,6 +294,10 @@ main(int argc, char *argv[]) {
 
     MindShake::FontSFT fontSFT("resources/Roboto-Regular.ttf");
     MindShake::FontSTB fontSTB("resources/Roboto-Regular.ttf");
+    if (fontSFT.GetStatus() != MindShake::Font::EStatus::Ok || fontSTB.GetStatus() != MindShake::Font::EStatus::Ok) {
+        fprintf(stderr, "Cannot load resources/Roboto-Regular.ttf (status %d, %d).\n", int(fontSFT.GetStatus()), int(fontSTB.GetStatus()));
+        return -1;
+    }
 
     fontSFT.SetAntialias(true);
     fontSTB.SetAntialias(true);

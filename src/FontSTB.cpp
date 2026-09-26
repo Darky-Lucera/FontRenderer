@@ -11,7 +11,6 @@
 //-------------------------------------
 #include <cmath>
 #include <math.h>      // ::lround, as DJGPP has no std::lround
-#include <cstdio>
 #include <memory>
 
 using namespace MindShake;
@@ -26,7 +25,6 @@ FontSTB::FontSTB(const char *fontName) : Font(fontName) {
     const uint8_t *data   = mFontFile.GetData();
     const int     offset  = (mFontFile.GetSize() >= 16) ? stbtt_GetFontOffsetForIndex(data, 0) : -1;
     if(offset < 0 || stbtt_InitFont(&mInfo, data, offset) == 0) {
-        fprintf(stderr, "Invalid font: '%s'.\n", fontName);
         mStatus = EStatus::InvalidFont;
         return;
     }
