@@ -1,18 +1,37 @@
 cmake_minimum_required(VERSION 3.10)
-project(FontRenderer VERSION 0.2.0)
+project(FontRenderer VERSION 0.3.0)
+
+# Options
+#--------------------------------------
+# A project that adds this one with add_subdirectory only builds the library, unless it asks for more.
+# PROJECT_IS_TOP_LEVEL would do the same, but it needs CMake 3.21.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(FONTRENDERER_IS_TOP_LEVEL ON)
+else()
+    set(FONTRENDERER_IS_TOP_LEVEL OFF)
+endif()
+option(FONTRENDERER_BUILD_EXAMPLES "Build the example, which needs MiniFB" ${FONTRENDERER_IS_TOP_LEVEL})
+option(FONTRENDERER_BUILD_TESTS    "Build the unit tests"                  ${FONTRENDERER_IS_TOP_LEVEL})
 
 # dependencies
 #--------------------------------------
 
 # MiniFB
-option(MINIFB_BUILD_EXAMPLES OFF)
-add_subdirectory("dependencies/minifb" EXCLUDE_FROM_ALL)
+if(FONTRENDERER_BUILD_EXAMPLES)
+    option(MINIFB_BUILD_EXAMPLES OFF)
+    add_subdirectory("dependencies/minifb" EXCLUDE_FROM_ALL)
+endif()
 
 # C++ version
 #--------------------------------------
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+# DJGPP headers only declare POSIX functions like stat in GNU mode.
+if(DJGPP)
+    set(CMAKE_CXX_EXTENSIONS ON)
+else()
+    set(CMAKE_CXX_EXTENSIONS OFF)
+endif()
 
 # Set output directory
 #--------------------------------------
@@ -62,6 +81,8 @@ if(MSVC)
     add_compile_options("$<$<CONFIG:RELEASE>:/Oi>")
     # Force Visual Studio to actualize __cplusplus version macro
     add_compile_options(/Zc:__cplusplus)
+    # Read the sources as UTF-8 instead of the system code page
+    add_compile_options(/utf-8)
 else()
     add_compile_options("$<$<CONFIG:Debug>:-g>")
     add_compile_options("$<IF:$<CONFIG:Debug>,-O0,-O2>")
@@ -78,6 +99,8 @@ set(SRC_FontRenderer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSFT.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/MappedFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/MappedFile.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/UTF8_Utils.h
@@ -96,16 +119,52 @@ target_include_directories(fontRenderer PUBLIC src)
 target_include_directories(fontRenderer PUBLIC src/external)
 
 #--------------------------------------
-set(SRC_ExampleRender
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/exampleRender.cpp
-)
-source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/tests" FILES ${SRC_ExampleRender})
+if(FONTRENDERER_BUILD_EXAMPLES)
+    set(SRC_ExampleRender
+        ${CMAKE_CURRENT_SOURCE_DIR}/examples/exampleRender.cpp
+    )
+    source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/examples" FILES ${SRC_ExampleRender})
 
-add_executable(exampleRender
-    ${SRC_ExampleRender}
-)
-target_link_libraries(exampleRender fontRenderer)
-target_link_libraries(exampleRender minifb)
+    add_executable(exampleRender
+        ${SRC_ExampleRender}
+    )
+    target_link_libraries(exampleRender fontRenderer)
+    target_link_libraries(exampleRender minifb)
+    # A DJGPP program reopens its own file through a truncated path, so the name must already fit in 8.3.
+    if(DJGPP)
+        set_target_properties(exampleRender PROPERTIES OUTPUT_NAME "example")
+    endif()
+endif()
+
+# Unit tests
+#--------------------------------------
+if(FONTRENDERER_BUILD_TESTS)
+    enable_testing()
+
+    set(SRC_UnitTests
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testMain.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testHelpers.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testDrawText.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFont.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testSkylineBinPack.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testUTF8.cpp
+    )
+    source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/tests" FILES ${SRC_UnitTests})
+
+    add_executable(unitTests
+        ${SRC_UnitTests}
+    )
+    target_include_directories(unitTests PRIVATE tests tests/external)
+    target_compile_definitions(unitTests PRIVATE FONT_RENDERER_TEST_RESOURCES="${CMAKE_CURRENT_SOURCE_DIR}/bin/resources/")
+    target_link_libraries(unitTests fontRenderer)
+    # DJGPP (DOS) has neither the threads nor the POSIX signal stacks doctest uses by default.
+    if(DJGPP)
+        target_compile_definitions(unitTests PRIVATE DOCTEST_CONFIG_NO_MULTITHREADING DOCTEST_CONFIG_NO_POSIX_SIGNALS)
+        set_target_properties(unitTests PROPERTIES OUTPUT_NAME "unittest")
+    endif()
+
+    add_test(NAME unitTests COMMAND unitTests)
+endif()
 
 # Organize Visual Studio Solution Folders
 #--------------------------------------

@@ -18,18 +18,16 @@ namespace MindShake {
     class FontSTB : public Font {
         public:
             explicit                    FontSTB(const char *fontName);
-            virtual                     ~FontSTB();
 
         protected:
             void                        GetKerningTable();
-            int                         GetKerning(uint32_t char1, uint32_t char2) override;
+            int                         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
 
             const CodePointData &       GetCodePointData(uint32_t index) override;
             const CodePointHeightData & GetCodePointDataForHeight(uint32_t index, uint8_t height) override;
 
         protected:
-            stbtt_fontinfo  mInfo {};
-            uint8_t         *mFontBuffer {};
+            stbtt_fontinfo          mInfo {};       // Points into mFontFile
     };
 
 } // end of namespace

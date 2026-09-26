@@ -1,0 +1,12 @@
+root = true
+
+[*]
+end_of_line = lf
+indent_style = space
+indent_size = 4
+
+# Third-party code is kept exactly as upstream ships it.
+[{src,tests}/external/**]
+end_of_line = unset
+indent_style = unset
+indent_size = unset

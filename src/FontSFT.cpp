@@ -9,49 +9,44 @@
 //-------------------------------------
 #include <cstdio>
 #include <cmath>
+#include <cstring>
 #include <memory>
 
 using namespace MindShake;
 
 //-------------------------------------
 FontSFT::FontSFT(const char *fontName) : Font(fontName) {
-    mFont = sft_loadfile(fontName);
+    // sft_loadfile cannot tell a missing file from an invalid font.
+    if(LoadFile(fontName) == false) {
+        return;
+    }
+
+    mFont.reset(sft_loadmem(mFontFile.GetData(), mFontFile.GetSize()));
     if(mFont == nullptr) {
-        fprintf(stderr, "Cannot open file: '%s'.\n", fontName);
-        mStatus = -2;
+        fprintf(stderr, "Invalid font: '%s'.\n", fontName);
+        mStatus = EStatus::InvalidFont;
         return;
     }
 
     if(InitPacker() == false) {
-        mStatus = -5;
         return;
     }
 
     GetFontVMetrics();
 
-    mStatus = 1;
-}
-
-//-------------------------------------
-FontSFT::~FontSFT() {
-    if(mFont != nullptr) {
-        sft_freefont(mFont);
-        mFont = nullptr;
-    }
-    if(mTexture != nullptr) {
-        free(mTexture);
-        mTexture = nullptr;
-    }
+    mStatus = EStatus::Ok;
 }
 
 //-------------------------------------
 void
 FontSFT::GetFontVMetrics() {
+    mUnitsPerEm = sft_unitsPerEm(mFont.get());
+
     SFT sft {};
-    sft.xScale = sft_unitsPerEm(mFont);
+    sft.xScale = mUnitsPerEm;
     sft.yScale = sft.xScale;
     sft.flags  = SFT_DOWNWARD_Y;
-    sft.font   = mFont;
+    sft.font   = mFont.get();
     SFT_LMetrics metrics {};
     sft_lmetrics(&sft, &metrics);
 
@@ -63,17 +58,18 @@ FontSFT::GetFontVMetrics() {
 //-------------------------------------
 const CodePointData &
 FontSFT::GetCodePointData(uint32_t index) {
-    if(mStatus < 0)
+    if(mStatus != EStatus::Ok) {
         return mCodePointData[0];
+    }
 
     auto cpd = mCodePointData.find(index);
     if(cpd == mCodePointData.end()) {
         SFT_Glyph gid {};
         SFT       sft {};
-        sft.xScale = sft_unitsPerEm(mFont);
+        sft.xScale = mUnitsPerEm;
         sft.yScale = sft.xScale;
         sft.flags  = SFT_DOWNWARD_Y;
-        sft.font   = mFont;
+        sft.font   = mFont.get();
         if (sft_lookup(&sft, index, &gid) < 0) {
             return mCodePointData[0];
         }
@@ -81,8 +77,9 @@ FontSFT::GetCodePointData(uint32_t index) {
             CodePointData   codePoint;
             SFT_GMetrics    metrics;
 
-            if(sft_gmetrics(&sft, gid, &metrics) != 0)
+            if(sft_gmetrics(&sft, gid, &metrics) != 0) {
                 return mCodePointData[0];
+            }
 
             codePoint.glyph = gid;
             codePoint.advanceWidth = metrics.advanceWidth;
@@ -98,8 +95,9 @@ FontSFT::GetCodePointData(uint32_t index) {
 //-------------------------------------
 const CodePointHeightData &
 FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
-    if(mStatus < 0)
+    if(mStatus != EStatus::Ok) {
         return mCodePointHeightData[0];
+    }
 
     CodePointHeight cph;
     cph.codePoint = index;
@@ -113,91 +111,48 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
         }
 
         SFT sft {};
-        sft.xScale = height;
-        sft.yScale = height;
-        sft.font   = mFont;
+        sft.xScale = double(GetScaleForHeight(height)) * mUnitsPerEm;
+        sft.yScale = sft.xScale;
+        sft.font   = mFont.get();
         sft.flags  = SFT_DOWNWARD_Y;
         SFT_GMetrics metrics{};
         if (sft_gmetrics(&sft, codePoint.glyph, &metrics) < 0) {
             return mCodePointHeightData[0];
         }
 
+        CodePointHeightData codePointHeight;
+        codePointHeight.glyph           = codePoint.glyph;
+        codePointHeight.x               = metrics.xOffset;
+        codePointHeight.y               = metrics.yOffset;
+        codePointHeight.leftSideBearing = int(floor(metrics.leftSideBearing));
+        codePointHeight.advanceWidth    = float(metrics.advanceWidth);
+
         int w = metrics.minWidth;
         int h = metrics.minHeight;
-
-        // special case (' ')
-        bool isEmpty = false;
-        if(w == 0) {
-            w = 1;
-            isEmpty = true;
-        }
-        if(h == 0) {
-            h = 1;
-            isEmpty = true;
-        }
-
-        auto pixels = std::make_unique<uint8_t[]>(w * h);
-        if(isEmpty) {
-            int offset = 0;
-            for(int y=0; y<h; ++y) {
-                for(int x=0; x<w; ++x) {
-                    pixels[offset + x] = 0;
-                }
-                offset += mPacker.GetWidth();
-            }
-        }
-        else {
+        // A glyph without an outline has no size. With a zero scale, only libschrift's extra row and column are left.
+        if(w > 1 && h > 1) {
+            auto pixels = std::make_unique<uint8_t[]>(size_t(w) * size_t(h));
             SFT_Image img {};
             img.width  = w;
             img.height = h;
-	        img.pixels = pixels.get();
+            img.pixels = pixels.get();
             if (sft_render(&sft, codePoint.glyph, img) < 0) {
                 return mCodePointHeightData[0];
             }
 
-            if(mUseAntialias) {
-                if(mAntialiasAllowEx) {
-                    auto dst = std::make_unique<uint8_t[]>((w + 2) * (h + 2));
-                    AABlockEx(pixels.get(), w, h, dst.get(), w + 2);
-                    std::swap(pixels, dst);
-                    w += 2;
-                    h += 2;
-                }
-                else {
-                    auto dst = std::make_unique<uint8_t[]>(w * h);
-                    AABlock(pixels.get(), w, h, dst.get(), w);
-                    std::swap(pixels, dst);
-                }
-            }
-        }
+            // libschrift sizes the image from the bounding box stored in the font, plus one row and column
+            // that stay empty unless the outline exceeds that box. Drop them so both backends clip the same way.
+            const int trimmedWidth  = w - 1;
+            const int trimmedHeight = h - 1;
+            for(int y = 1; y < trimmedHeight; ++y)
+                memmove(&pixels[size_t(y) * size_t(trimmedWidth)], &pixels[size_t(y) * size_t(w)], size_t(trimmedWidth));
+            w = trimmedWidth;
+            h = trimmedHeight;
 
-        CodePointHeightData codePointHeight;
-        codePointHeight.glyph           = codePoint.glyph;
-        codePointHeight.x               = 0;
-        codePointHeight.y               = metrics.yOffset;
-        codePointHeight.leftSideBearing = int(floor(metrics.leftSideBearing));
-        codePointHeight.advanceWidth    = int(ceil( metrics.advanceWidth));
-
-        codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
-        if(codePointHeight.rect.width <= 0) {
-            mPacker.ResizeBin(mPacker.GetWidth(), mPacker.GetHeight() << 1);
-            uint8_t *aux = (uint8_t *) realloc(mTexture, mPacker.GetWidth() * mPacker.GetHeight());
-            if(aux == nullptr) {
-                return mCodePointHeightData[0];
-            }
-            mTexture = aux;
-            codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
-            if(codePointHeight.rect.width <= 0) {
-                return mCodePointHeightData[0];
-            }
-        }
-
-        size_t byteOffset   = (codePointHeight.rect.y) * mPacker.GetWidth() + codePointHeight.rect.x;
-        size_t pixelsOffset = 0;
-        for(int y=0; y<h; ++y) {
-            memcpy(&mTexture[byteOffset], &pixels[pixelsOffset], w);
-            byteOffset   += mPacker.GetWidth();
-            pixelsOffset += w;
+            const int grown = ApplyAntialias(pixels, w, h);
+            codePointHeight.x -= grown;
+            codePointHeight.y -= grown;
+            PackGlyph(pixels.get(), uint32_t(w), uint32_t(h), codePointHeight);
         }
 
         cphd = mCodePointHeightData.insert({cph.value, codePointHeight}).first;
@@ -208,21 +163,21 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
 
 //-------------------------------------
 int
-FontSFT::GetKerning(uint32_t char1, uint32_t char2) {
-    auto it = mKerningData.find((uint64_t(char1) << 32) | uint64_t(char2));
-    if(it != mKerningData.end()) {
-        return it->second;
-    }
-    else {
-        SFT       sft {};
-        sft.xScale = sft_unitsPerEm(mFont);
+FontSFT::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
+    const uint64_t key = (uint64_t(leftGlyph) << 32) | uint64_t(rightGlyph);
+
+    auto it = mKerningData.find(key);
+    if(it == mKerningData.end()) {
+        SFT sft {};
+        sft.xScale = mUnitsPerEm;
         sft.yScale = sft.xScale;
-        sft.font   = mFont;
+        sft.font   = mFont.get();
         sft.flags  = SFT_DOWNWARD_Y;
-        SFT_Kerning kerning;
-        sft_kerning(&sft, char1, char2, &kerning);
-        //if(kerning.xShift != 0)
-            mKerningData[(uint64_t(char1) << 32) | uint64_t(char2)] = int32_t(kerning.xShift);
+
+        SFT_Kerning kerning {};
+        const int32_t advance = (sft_kerning(&sft, leftGlyph, rightGlyph, &kerning) < 0) ? 0 : int32_t(kerning.xShift);
+        it = mKerningData.insert({ key, advance }).first;
     }
-    return 0;
+
+    return it->second;
 }

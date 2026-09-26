@@ -1,6 +1,6 @@
 /* This file is part of libschrift.
  *
- * © 2019-2021 Thomas Oltmann and contributors
+ * © 2019-2022 Thomas Oltmann and contributors
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -37,41 +37,42 @@ typedef struct SFT_Image    SFT_Image;
 
 struct SFT
 {
-	SFT_Font *font;
-	double    xScale;
-	double    yScale;
-	double    xOffset;
-	double    yOffset;
-	int       flags;
+    SFT_Font *font;
+    double    xScale;
+    double    yScale;
+    double    xOffset;
+    double    yOffset;
+    int       flags;
 };
 
 struct SFT_LMetrics
 {
-	double ascender;
-	double descender;
-	double lineGap;
+    double ascender;
+    double descender;
+    double lineGap;
 };
 
 struct SFT_GMetrics
 {
-	double advanceWidth;
-	double leftSideBearing;
-	int    yOffset;
-	int    minWidth;
-	int    minHeight;
+    double advanceWidth;
+    double leftSideBearing;
+    int    xOffset;
+    int    yOffset;
+    int    minWidth;
+    int    minHeight;
 };
 
 struct SFT_Kerning
 {
-	double xShift;
-	double yShift;
+    double xShift;
+    double yShift;
 };
 
 struct SFT_Image
 {
-	void *pixels;
-	int   width;
-	int   height;
+    void *pixels;
+    int   width;
+    int   height;
 };
 
 const char *sft_version(void);

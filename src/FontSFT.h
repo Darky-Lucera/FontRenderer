@@ -10,6 +10,7 @@
 #include "Font.h"
 //-------------------------------------
 #include <libschrift/schrift.h>
+#include <memory>
 
 //-------------------------------------
 namespace MindShake {
@@ -18,17 +19,16 @@ namespace MindShake {
     class FontSFT : public Font {
         public:
             explicit                    FontSFT(const char *fontName);
-            virtual                     ~FontSFT();
 
         protected:
             void                        GetFontVMetrics();
-            int                         GetKerning(uint32_t char1, uint32_t char2) override;
+            int                         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
 
             const CodePointData &       GetCodePointData(uint32_t index) override;
             const CodePointHeightData & GetCodePointDataForHeight(uint32_t index, uint8_t height) override;
 
         protected:
-            SFT_Font    *mFont {};
+            std::unique_ptr<SFT_Font, void (*)(SFT_Font *)> mFont { nullptr, sft_freefont };   // Points into mFontFile
     };
 
 } // end of namespace

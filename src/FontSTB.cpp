@@ -9,6 +9,8 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "FontSTB.h"
 //-------------------------------------
+#include <cmath>
+#include <math.h>      // ::lround, as DJGPP has no std::lround
 #include <cstdio>
 #include <memory>
 
@@ -16,62 +18,29 @@ using namespace MindShake;
 
 //-------------------------------------
 FontSTB::FontSTB(const char *fontName) : Font(fontName) {
-    uint32_t    size;
-
-    // Read font into memory
-    FILE *fontFile = fopen(fontName, "rb");
-    if(fontFile == nullptr) {
-        fprintf(stderr, "Cannot open file: '%s'.\n", fontName);
-        mStatus = -2;
+    if(LoadFile(fontName) == false) {
         return;
     }
 
-    fseek(fontFile, 0, SEEK_END);
-    size = ftell(fontFile);
-    fseek(fontFile, 0, SEEK_SET);
-
-    mFontBuffer = (uint8_t *) malloc(size);
-    if(mFontBuffer == nullptr) {
-        fprintf(stderr, "Not enough memory\n");
-        mStatus = -3;
-        fclose(fontFile);
-        return;
-    }
-
-    fread(mFontBuffer, size, 1, fontFile);
-    fclose(fontFile);
-    fontFile = nullptr;
-
-    // Init Font
-    if (!stbtt_InitFont(&mInfo, mFontBuffer, stbtt_GetFontOffsetForIndex(mFontBuffer, 0))) {
-        fprintf(stderr, "Init font failed\n");
-        mStatus = -4;
+    // stb_truetype does not check bounds: finding the offset reads 16 bytes, and -1 means it is not a font.
+    const uint8_t *data   = mFontFile.GetData();
+    const int     offset  = (mFontFile.GetSize() >= 16) ? stbtt_GetFontOffsetForIndex(data, 0) : -1;
+    if(offset < 0 || stbtt_InitFont(&mInfo, data, offset) == 0) {
+        fprintf(stderr, "Invalid font: '%s'.\n", fontName);
+        mStatus = EStatus::InvalidFont;
         return;
     }
 
     if(InitPacker() == false) {
-        mStatus = -5;
         return;
     }
 
     stbtt_GetFontVMetrics(&mInfo, &mAscent, &mDescent, &mLineGap);
+    mUnitsPerEm = int(::lround(1.0f / stbtt_ScaleForMappingEmToPixels(&mInfo, 1.0f)));
 
     GetKerningTable();
 
-    mStatus = 1;
-}
-
-//-------------------------------------
-FontSTB::~FontSTB() {
-    if(mFontBuffer != nullptr) {
-        free(mFontBuffer);
-        mFontBuffer = nullptr;
-    }
-
-    if(mTexture != nullptr) {
-        free(mTexture);
-        mTexture = nullptr;
-    }
+    mStatus = EStatus::Ok;
 }
 
 //-------------------------------------
@@ -79,22 +48,22 @@ void
 FontSTB::GetKerningTable() {
     int length = stbtt_GetKerningTableLength(&mInfo);
     if (length > 0) {
-        stbtt_kerningentry *kernings = new stbtt_kerningentry[length];
-        stbtt_GetKerningTable(&mInfo, kernings, length);
+        std::vector<stbtt_kerningentry> kernings(static_cast<size_t>(length));
+        stbtt_GetKerningTable(&mInfo, kernings.data(), length);
         mKerningData.reserve(size_t(length));
         for (int k = 0; k < length; ++k) {
             auto &current = kernings[k];
             mKerningData[(uint64_t(current.glyph1) << 32) | uint64_t(current.glyph2)] = current.advance;
         }
-        delete[] kernings;
     }
 }
 
 //-------------------------------------
 const CodePointData &
 FontSTB::GetCodePointData(uint32_t index) {
-    if(mStatus < 0)
+    if(mStatus != EStatus::Ok) {
         return mCodePointData[0];
+    }
 
     auto cpd = mCodePointData.find(index);
     if(cpd == mCodePointData.end()) {
@@ -119,8 +88,9 @@ FontSTB::GetCodePointData(uint32_t index) {
 //-------------------------------------
 const CodePointHeightData &
 FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
-    if(mStatus < 0)
+    if(mStatus != EStatus::Ok) {
         return mCodePointHeightData[0];
+    }
 
     CodePointHeight cph;
     cph.codePoint = index;
@@ -138,76 +108,23 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
 
         stbtt_GetGlyphBitmapBox(&mInfo, codePoint.glyph, scale, scale, &x1, &y1, &x2, &y2);
 
-        int w = (x2 - x1);
-        int h = (y2 - y1);
-
-        // special case (' ')
-        bool isEmpty = false;
-        if(w == 0) {
-            w = 1;
-            isEmpty = true;
-        }
-        if(h == 0) {
-            h = 1;
-            isEmpty = true;
-        }
-
-        auto pixels = std::make_unique<uint8_t[]>(w * h);
-        if(isEmpty) {
-            int offset = 0;
-            for(int y=0; y<h; ++y) {
-                for(int x=0; x<w; ++x) {
-                    pixels[offset + x] = 0;
-                }
-                offset += mPacker.GetWidth();
-            }
-        }
-        else {
-            stbtt_MakeGlyphBitmap(&mInfo, pixels.get(), w, h, w, scale, scale, codePoint.glyph);
-
-            if(mUseAntialias) {
-                if(mAntialiasAllowEx) {
-                    auto dst = std::make_unique<uint8_t[]>((w + 2) * (h + 2));
-                    AABlockEx(pixels.get(), w, h, dst.get(), w + 2);
-                    std::swap(pixels, dst);
-                    w += 2;
-                    h += 2;
-                }
-                else {
-                    auto dst = std::make_unique<uint8_t[]>(w * h);
-                    AABlock(pixels.get(), w, h, dst.get(), w);
-                    std::swap(pixels, dst);
-                }
-            }
-        }
-
         CodePointHeightData codePointHeight;
         codePointHeight.glyph           = codePoint.glyph;
         codePointHeight.x               = x1;
         codePointHeight.y               = y1;
         codePointHeight.leftSideBearing = int(floor(codePoint.leftSideBearing * scale));
-        codePointHeight.advanceWidth    = int(ceil( codePoint.advanceWidth    * scale));
+        codePointHeight.advanceWidth    = float(codePoint.advanceWidth) * scale;
 
-        codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
-        if(codePointHeight.rect.width <= 0) {
-            mPacker.ResizeBin(mPacker.GetWidth(), mPacker.GetHeight() << 1);
-            uint8_t *aux = (uint8_t *) realloc(mTexture, mPacker.GetWidth() * mPacker.GetHeight());
-            if(aux == nullptr) {
-                return mCodePointHeightData[0];
-            }
-            mTexture = aux;
-            codePointHeight.rect = mPacker.Insert(w, h, ELevelChoiceHeuristic::LevelBottomLeft);
-            if(codePointHeight.rect.width <= 0) {
-                return mCodePointHeightData[0];
-            }
-        }
+        int w = (x2 - x1);
+        int h = (y2 - y1);
+        if(w > 0 && h > 0) {
+            auto pixels = std::make_unique<uint8_t[]>(size_t(w) * size_t(h));
+            stbtt_MakeGlyphBitmap(&mInfo, pixels.get(), w, h, w, scale, scale, codePoint.glyph);
 
-        size_t byteOffset   = (codePointHeight.rect.y) * mPacker.GetWidth() + codePointHeight.rect.x;
-        size_t pixelsOffset = 0;
-        for(int y=0; y<h; ++y) {
-            memcpy(&mTexture[byteOffset], &pixels[pixelsOffset], w);
-            byteOffset   += mPacker.GetWidth();
-            pixelsOffset += w;
+            const int grown = ApplyAntialias(pixels, w, h);
+            codePointHeight.x -= grown;
+            codePointHeight.y -= grown;
+            PackGlyph(pixels.get(), uint32_t(w), uint32_t(h), codePointHeight);
         }
 
         cphd = mCodePointHeightData.insert({cph.value, codePointHeight}).first;
@@ -218,10 +135,17 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
 
 //-------------------------------------
 int
-FontSTB::GetKerning(uint32_t char1, uint32_t char2) {
-    auto it = mKerningData.find((uint64_t(char1) << 32) | uint64_t(char2));
-    if(it != mKerningData.end()) {
-        return it->second;
+FontSTB::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
+    const uint64_t key = (uint64_t(leftGlyph) << 32) | uint64_t(rightGlyph);
+
+    auto it = mKerningData.find(key);
+    if(it == mKerningData.end()) {
+        // The 'kern' pairs are preloaded, so this only adds what stb can read from GPOS.
+        // stb reads GPOS alone when the font has it, and it only understands part of that table,
+        // so it cannot replace the 'kern' lookup: fonts with both tables would lose their kerning.
+        const int advance = stbtt_GetGlyphKernAdvance(&mInfo, int(leftGlyph), int(rightGlyph));
+        it = mKerningData.insert({ key, advance }).first;
     }
-    return 0;
+
+    return it->second;
 }

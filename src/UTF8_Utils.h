@@ -7,78 +7,65 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 //-------------------------------------
 namespace MindShake {
 
+    constexpr uint32_t kReplacementCharacter = 0xFFFD;
+
+    // Returns 0 at the end of the text. Invalid or truncated sequences return kReplacementCharacter.
     //---------------------------------
     inline uint32_t
     GetNextUTF32(const uint8_t **text) {
-        static const uint8_t  UTF8_Bytes[256] = {
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-
-            2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
-            2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
-
-            3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,
-
-            4,4,4,4,4,4,4,4,5,5,5,5,6,6,6,6,
-        };
-
-        //static const uint32_t gOffsetsFromUTF8[6] = {
-        //    0x00000000UL, 0x00003080UL, 0x000E2080UL, 0x03C82080UL, 0xFA082080UL, 0x82082080UL
-        //};
-
-        if(text == nullptr || *text == nullptr || **text == 0)
+        if(text == nullptr || *text == nullptr || **text == 0) {
             return 0;
-
-        size_t      length = UTF8_Bytes[**text];
-        uint32_t    codePoint = 0;
-        switch(length) {
-            case 1:
-                codePoint = uint32_t(*(*text + 0) & ~0x80);
-                (*text) += 1;
-                break;
-
-            case 2:
-                codePoint  = uint32_t(*(*text + 0) & ~0xE0) <<  6;
-                codePoint |= uint32_t(*(*text + 1) & ~0xC0);
-                (*text) += 2;
-                break;
-
-            case 3:
-                codePoint  = uint32_t(*(*text + 0) & ~0xF0) << 12;
-                codePoint |= uint32_t(*(*text + 1) & ~0xC0) <<  6;
-                codePoint |= uint32_t(*(*text + 2) & ~0xC0);
-                (*text) += 3;
-                break;
-
-            case 4:
-                codePoint  = uint32_t(*(*text + 0) & ~0xF8) << 18;
-                codePoint |= uint32_t(*(*text + 1) & ~0xC0) << 12;
-                codePoint |= uint32_t(*(*text + 2) & ~0xC0) <<  6;
-                codePoint |= uint32_t(*(*text + 3) & ~0xC0);
-                (*text) += 4;
-                break;
-
-            // Error
-            default:
-                codePoint = 0;
-                break;
         }
 
+        const uint8_t   *bytes = *text;
+        const uint8_t   lead   = bytes[0];
+        uint32_t        codePoint;
+        size_t          length;
+
+        if(lead < 0x80) {
+            *text += 1;
+            return lead;
+        }
+        else if((lead & 0xE0) == 0xC0) {
+            codePoint = lead & 0x1F;
+            length    = 2;
+        }
+        else if((lead & 0xF0) == 0xE0) {
+            codePoint = lead & 0x0F;
+            length    = 3;
+        }
+        else if((lead & 0xF8) == 0xF0) {
+            codePoint = lead & 0x07;
+            length    = 4;
+        }
+        else {
+            *text += 1;
+            return kReplacementCharacter;
+        }
+
+        // Each byte is checked before reading the next one, so a truncated sequence stops at the terminating zero.
+        for(size_t i = 1; i < length; ++i) {
+            if((bytes[i] & 0xC0) != 0x80) {
+                *text += i;
+                return kReplacementCharacter;
+            }
+            codePoint = (codePoint << 6) | (bytes[i] & 0x3F);
+        }
+
+        // An overlong form could encode a zero, which would end the text early.
+        const uint32_t minimum = (length == 2) ? 0x80 : (length == 3) ? 0x800 : 0x10000;
+        if(codePoint < minimum || (codePoint >= 0xD800 && codePoint <= 0xDFFF) || codePoint > 0x10FFFF) {
+            codePoint = kReplacementCharacter;
+        }
+
+        *text += length;
         return codePoint;
     }
 
@@ -87,28 +74,30 @@ namespace MindShake {
     UTF32_2_UTF8(const char32_t *utf32) {
         std::string utf8;
 
-        while(*utf32 != 0) {
-            if (*utf32 < 0x80)
-                utf8 += static_cast<uint8_t>(*utf32++);
-            else if (*utf32 < 0x800) {
-                utf8 += static_cast<uint8_t>((*utf32++ >> 6)          | 0xc0);
-                utf8 += static_cast<uint8_t>((*utf32++ & 0x3f)        | 0x80);
+        for(; *utf32 != 0; ++utf32) {
+            const uint32_t codePoint = *utf32;
+
+            if(codePoint < 0x80) {
+                utf8 += char(codePoint);
             }
-            else if (*utf32 < 0x10000) {
-                utf8 += static_cast<uint8_t>((*utf32++ >> 12)         | 0xe0);
-                utf8 += static_cast<uint8_t>(((*utf32++ >> 6) & 0x3f) | 0x80);
-                utf8 += static_cast<uint8_t>((*utf32++ & 0x3f)        | 0x80);
+            else if(codePoint < 0x800) {
+                utf8 += char(0xC0 |  (codePoint >> 6));
+                utf8 += char(0x80 |  (codePoint        & 0x3F));
+            }
+            else if(codePoint < 0x10000) {
+                utf8 += char(0xE0 |  (codePoint >> 12));
+                utf8 += char(0x80 | ((codePoint >> 6)  & 0x3F));
+                utf8 += char(0x80 |  (codePoint        & 0x3F));
             }
             else {
-                utf8 += static_cast<uint8_t>((*utf32++ >> 18)         | 0xf0);
-                utf8 += static_cast<uint8_t>(((*utf32++ >> 12) & 0x3f)| 0x80);
-                utf8 += static_cast<uint8_t>(((*utf32++ >> 6) & 0x3f) | 0x80);
-                utf8 += static_cast<uint8_t>((*utf32++ & 0x3f)        | 0x80);
+                utf8 += char(0xF0 |  (codePoint >> 18));
+                utf8 += char(0x80 | ((codePoint >> 12) & 0x3F));
+                utf8 += char(0x80 | ((codePoint >> 6)  & 0x3F));
+                utf8 += char(0x80 |  (codePoint        & 0x3F));
             }
         }
 
         return utf8;
     }
-
 
 } // end of namespace
