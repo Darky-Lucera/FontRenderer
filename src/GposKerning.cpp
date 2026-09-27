@@ -49,7 +49,6 @@ namespace {
             size_t          mSize;
     };
 
-    // Binary search in sorted records that start with a glyph id. Returns the index of the record, or -1.
     //---------------------------------
     int32_t
     FindGlyph(const Reader &reader, size_t records, uint16_t count, size_t recordSize, uint16_t glyph) {
@@ -71,8 +70,7 @@ namespace {
         return -1;
     }
 
-    // Binary search in sorted records of 6 bytes that start with the first and last glyph ids of a range.
-    // Returns the index of the record, or -1.
+    // Each record starts with the first and last glyph ids of a range.
     //---------------------------------
     int32_t
     FindRange(const Reader &reader, size_t records, uint16_t count, uint16_t glyph) {
@@ -94,7 +92,6 @@ namespace {
         return -1;
     }
 
-    // Returns -1 if the glyph is not covered.
     //---------------------------------
     int32_t
     GetCoverageIndex(const Reader &reader, size_t coverage, uint16_t glyph) {
@@ -134,7 +131,7 @@ namespace {
         return 0;
     }
 
-    // Each field of a value record takes 2 bytes, in the order of its bit. Only the 8 low bits are fields.
+    // A value record has 2 bytes for each bit set in its format, in bit order. Only the 8 low bits of the format are fields.
     //---------------------------------
     size_t
     GetValueRecordSize(uint16_t valueFormat) {
@@ -192,7 +189,6 @@ namespace {
         return true;
     }
 
-    // Returns the positions of the pair adjustment subtables of the lookup, which may be inside extension subtables.
     //---------------------------------
     std::vector<uint32_t>
     GetPairSubtables(const Reader &gpos, size_t lookup, size_t &budget) {
@@ -272,7 +268,7 @@ GposKerning::Load(const uint8_t *font, size_t size, size_t fontOffset) {
         }
     }
 
-    // A real font takes far fewer steps to read than bytes has its GPOS. This stops a broken font whose tables
+    // Reading a real font takes far fewer steps than its GPOS has bytes. This stops a broken font whose tables
     // point into each other, so that the same few bytes would be read millions of times.
     size_t budget = mGposSize;
 
@@ -346,7 +342,7 @@ GposKerning::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) const {
         return 0;
     }
 
-    // Adding the kerning of every script would apply twice the pairs that the lookups of two scripts share.
+    // Adding the kerning of every script would apply a pair twice when two scripts have it.
     // So the first script whose lookups have the pair decides, even if it gives 0.
     const Reader gpos(mGpos, mGposSize);
     for (const auto &lookups : mScripts) {

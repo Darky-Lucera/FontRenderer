@@ -25,7 +25,6 @@ namespace {
     constexpr uint16_t kPairAdjustment = 2;
     constexpr uint16_t kChainedContext = 8;
 
-    // Big endian bytes of a table under construction.
     //---------------------------------
     class Bytes {
         public:
@@ -488,7 +487,7 @@ TEST_CASE("GposKerning takes the kerning of the first script that has the pair")
     TestFont font(MakeFont(MakeGpos({ MakeLookup({ MakePairPos1({ { 10, 20, -50 } }) }, { "latn" }),
                                       MakeLookup({ MakePairPos1({ { 10, 20, -30 }, { 11, 21, -7 }, { 14, 24, -8 } }) }, { "hebr" }),
                                       MakeLookup({ MakePairPos1({ { 10, 20, -99 }, { 12, 22, -3 }, { 14, 24, -4 } }) }, { "DFLT" }),
-                                      MakeLookup({ MakePairPos1({ { 13, 23, -11 } }) }, { "DFLT", "hebr", "latn" }) })));
+                                      MakeLookup({ MakePairPos1({ { 13, 23, -11 } }) }, { "latn", "latn" }) })));
     REQUIRE(font.loaded);
 
     // Latin goes first, then the default script, then the rest.
@@ -496,7 +495,7 @@ TEST_CASE("GposKerning takes the kerning of the first script that has the pair")
     CHECK(font.kerning.GetKerning(12, 22) == -3);
     CHECK(font.kerning.GetKerning(14, 24) == -4);
     CHECK(font.kerning.GetKerning(11, 21) == -7);
-    // A lookup can belong to several scripts.
+    // The 'kern' feature of Latin lists this lookup twice, and it still applies once.
     CHECK(font.kerning.GetKerning(13, 23) == -11);
 }
 
@@ -607,7 +606,6 @@ TEST_CASE("GposKerning never reads outside a broken GPOS table") {
     const Bytes gpos = MakeGpos({ extension, MakeLookup({ MakePairPos2(classes, kAllFields) }) });
 
     // The results do not matter: this only has to finish without reading outside the font.
-    // Out of bounds reads only fail with AddressSanitizer or similar tools.
     const auto queryPairs = [](const GposKerning &kerning) {
         int sum = 0;
         for (uint32_t left = 0; left < 48; ++left) {

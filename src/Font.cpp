@@ -273,8 +273,9 @@ Font::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
 
     auto it = mKerningData.find(key);
     if (it == mKerningData.end()) {
-        // As in HarfBuzz, GPOS wins over the 'kern' table. Fonts keep 'kern' for old software,
-        // and it often has only part of the pairs, because it cannot store classes of glyphs.
+        // GPOS wins over the 'kern' table when it has kerning, as in HarfBuzz. FreeType prefers 'kern', but fonts keep it
+        // for old software, and it often has only part of the pairs, because it cannot store classes of glyphs.
+        // stb_truetype also prefers GPOS, but whenever the font has the table, even without kerning in it.
         const int kerning = mGposKerning.HasKerning() ? mGposKerning.GetKerning(leftGlyph, rightGlyph) : GetKernTableKerning(leftGlyph, rightGlyph);
         it = mKerningData.insert({ key, kerning }).first;
     }
