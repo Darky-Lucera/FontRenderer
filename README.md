@@ -2,6 +2,8 @@
 
 FontRenderer is a simple tool for rendering text from a ttf font into a buffer (with clipping).
 
+It can also save the glyphs it renders and draw text with them later, without the font file and without a rasterizer (see [Baked fonts](#baked-fonts)), and it gives where each glyph goes, to draw the text with the GPU (see [Drawing with the GPU](#drawing-with-the-gpu)).
+
 As an example I have used the Mini Frame Buffer (MiniFB) library to create a window and render some text inside.
 
 ## API
@@ -37,6 +39,56 @@ font.DrawText(text, fontSize, color32, bufferDest, bufferDestStride, posX, posY)
 
 **Note**: Each glyph is rendered only once per fontSize, so changing any antialias setting discards the glyphs already rendered.
 
+### Classes
+
+- `FontBase` lays out and draws text with the glyphs a font already has. `DrawText`, `GetTextBox` and `GetGlyphQuads` are here.
+- `Font` renders its glyphs from a font file the first time they are drawn. `FontSTB`, `FontSFT` and `FontFT` are its backends.
+- `FontBaked` only reads the glyphs that a `Font` saved before. See [Baked fonts](#baked-fonts).
+
+## Baked fonts
+
+A `Font` can save the glyphs it has rendered, and `FontBaked` can draw text with them later, without the font file and without a rasterizer. This is useful on computers that are too slow to rasterize glyphs, like DOS computers, or to ship a program without the font and its rasterizer.
+
+`FontBaked` cannot render new glyphs. It does not draw a code point or a height that was not saved.
+
+```cpp
+MindShake::FontSTB font("resources/Roboto-Regular.ttf");
+font.SetAntialias(true);
+
+// Render every glyph the program will draw, at every height it will use.
+font.Preload(u8"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?¿¡áéíóúñÑ", 16);
+font.Preload(u8"0123456789", 32);
+
+// Look up the kerning of every pair of rendered glyphs. It can be very slow with many glyphs.
+font.LoadAllKerningPairs();
+
+font.SaveBaked("roboto.frb", "roboto.tga");
+```
+
+And later, maybe in another program:
+
+```cpp
+MindShake::FontBaked font("roboto.frb", "roboto.tga");
+font.DrawText("Hello", 16, color32, bufferDest, bufferDestStride, posX, posY);
+```
+
+`Preload` packs all the glyphs of the text together, which fills the texture better than drawing them one by one. `SaveBaked` saves every glyph rendered so far, also the ones rendered by `DrawText` or `GetTextBox`. It only saves the kerning pairs already looked up, so call `LoadAllKerningPairs` first.
+
+`SaveBaked` writes two files:
+
+- The metrics file has the metrics of each height, the position of each glyph in the texture, and the kerning. It is a little-endian binary file, so it works the same on every platform.
+- The texture is an 8-bit grayscale TGA compressed with RLE, which most image programs read. It only has the used area of the texture. `FontBaked` reads it compressed or not, with its rows from the top down or from the bottom up.
+
+You can convert the texture to another format, like PNG, and decode it yourself. Then pass the pixels to `FontBaked(metricsFile, texture, width, height)`. The size must be the same. If the texture is only in the GPU, pass `nullptr`: `DrawText` then draws nothing, but `GetGlyphQuads` still works.
+
+## Drawing with the GPU
+
+`GetGlyphQuads` gives the glyphs that `DrawText` would draw: where each one goes, relative to the position of the text, and the area of the texture it uses. Draw a textured quad for each one. The clipping does not apply to the quads.
+
+The packer can rotate a glyph to fit it better. A rotated glyph is stored transposed: the pixel (x, y) of the quad is the texel (textureRect.x + y, textureRect.y + x).
+
+With `Font`, drawing or measuring text can render new glyphs and change the texture. `GetTextureVersion` changes every time the texels change, so compare it with the version you uploaded to know when to upload the texture again.
+
 ## Font Renderer external dependencies
 
 For getting the font glyphs the following libraries are used:
@@ -44,6 +96,8 @@ For getting the font glyphs the following libraries are used:
 - [stb_truetype](https://github.com/nothings/stb/blob/master/stb_truetype.h) (.ttf, .otf) :ok:
 - [libschrift](https://github.com/tomolt/libschrift) (.ttf, and .otf with TrueType outlines: it cannot read CFF outlines) :ok:
 - [FreeType](https://freetype.org/) (.ttf, .otf, and the other scalable formats it reads) :ok: (optional). `FontFT` also has hinting, a monochrome mode and stem darkening, which make small text sharper. See `FontFT.h`.
+
+`FontBaked` does not need any of them: it only reads the files that a `Font` saved.
 
 **Note**: The copy of libschrift in `src/external/libschrift` is version 0.10.2 with some changes. FontSFT needs them, so use this copy and not the upstream one:
 
@@ -65,7 +119,7 @@ Kerning that depends on more than two glyphs needs a text shaper like HarfBuzz, 
 
 Tested on Windows, Linux, the web (Emscripten) and DOS (DJGPP, in DOSBox-X). It also builds for Android. macOS and iOS use the same POSIX code, but they are not tested.
 
-DOS support is minimal. DOS cannot map files, so the whole font is loaded into memory, and rasterizing TrueType glyphs is slow on computers of that time. On DOS, a prerendered bitmap font is a better choice. The example also needs long file names (`lfn = true` in DOSBox-X) to find its font file.
+DOS support is minimal. DOS cannot map files, so the whole font is loaded into memory, and rasterizing TrueType glyphs is slow on computers of that time. On DOS, a [baked font](#baked-fonts) is a better choice: build only `FONTRENDERER_USE_BAKED`, and save the font on another computer. The example also needs long file names (`lfn = true` in DOSBox-X) to find its font file.
 
 ## How to use it
 
@@ -79,23 +133,35 @@ You have two options:
   |`FONTRENDERER_USE_STB`|`ON`|The stb_truetype backend, `FontSTB`|
   |`FONTRENDERER_USE_LIBSCHRIFT`|`ON`|The libschrift backend, `FontSFT`|
   |`FONTRENDERER_USE_FREETYPE`|`OFF`|The FreeType backend, `FontFT`. CMake uses the FreeType installed in the system, and downloads it if there is none|
+  |`FONTRENDERER_USE_BAKED`|`ON`|The backend that reads baked fonts, `FontBaked`|
   |`FONTRENDERER_BUILD_EXAMPLES`|`ON` only when FontRenderer is the main project|The examples, which show every backend that is on. They download MiniFB, unless the project that adds FontRenderer already has a `minifb` target|
   |`FONTRENDERER_BUILD_TESTS`|`ON` only when FontRenderer is the main project|The unit tests|
 
-  At least one backend must be on. The library defines `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT` and `FONTRENDERER_USE_FREETYPE` for each backend that is on, also for the code that uses the library. The header of each backend, like `FontSTB.h`, stops the build if its macro is not defined.
+  At least one backend must be on. The library defines `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` and `FONTRENDERER_USE_BAKED` for each backend that is on, also for the code that uses the library. The header of each backend, like `FontSTB.h`, stops the build if its macro is not defined.
+
+  With only `FONTRENDERER_USE_BAKED`, the library does not build `Font`, which renders glyphs. The examples are not built, and the unit tests only test what does not need a font file.
 
 - Select the library you want to use into your project (stb_truetype, libschrift, FreeType) and drop the following files in your project.
-  Define the macro of each backend you choose, `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT` or `FONTRENDERER_USE_FREETYPE`, for every file you compile: the header of the backend and the C API need it.
+  Define the macro of each backend you choose, `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` or `FONTRENDERER_USE_BAKED`, for every file you compile: the header of the backend and the C API need it.
+
+  - FontBase.h
+  - FontBase.cpp
+  - MappedFile.h
+  - MappedFile.cpp
+  - SkylineBinPack.h
+  - Tga.h
+  - Tga.cpp
+  - UTF8_Utils.h
+
+  ---
+
+  **If you choose libschrift, stb_truetype or FreeType**, which render glyphs, also:
 
   - Font.h
   - Font.cpp
   - GposKerning.h
   - GposKerning.cpp
-  - MappedFile.h
-  - MappedFile.cpp
-  - SkylineBinPack.h
   - SkylineBinPack.cpp
-  - UTF8_Utils.h
 
   ---
 
@@ -124,6 +190,13 @@ You have two options:
 
   ---
 
+  **If you choose to use baked fonts**:
+
+  - FontBaked.h
+  - FontBaked.cpp
+
+  ---
+
   **If you also want the C API**:
 
   - FontC.h
@@ -139,7 +212,7 @@ CMake downloads MiniFB for the examples, and FreeType when `FONTRENDERER_USE_FRE
 
 ## Captures
 
-The example shows every backend that is on side by side, the atlas of one of them, and the keys in the status bar.
+The example shows every backend that is on side by side, the atlas of one of them, and the keys in the status bar. S bakes the font of the shown atlas: it saves `baked.frb` and `baked.tga` next to the example, reads them back with `FontBaked`, and draws a row with it. The baked row keeps the settings it was saved with, so the antialias keys do not change it.
 
 |Capture|Settings|
 |---|---|
@@ -148,3 +221,4 @@ The example shows every backend that is on side by side, the atlas of one of the
 |![Gaussian antialias, extended](screenshots/captureAA.png)|Antialias with Gaussian weights, glyphs extended one pixel|
 |![Mean antialias, extended](screenshots/captureAAm.png)|Antialias with mean weights, glyphs extended one pixel|
 |![Clipping and atlas](screenshots/captureClip.png)|Clipping (the darkened area) and the atlas of stb_truetype|
+|![Baked font](screenshots/captureBaked.png)|The font of stb_truetype baked with S: its row, drawn with `FontBaked`, and its atlas|

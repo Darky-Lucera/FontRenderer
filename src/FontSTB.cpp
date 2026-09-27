@@ -69,51 +69,28 @@ FontSTB::GetCodePointData(uint32_t index) {
 }
 
 //-------------------------------------
-const CodePointHeightData &
-FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
-    if(mStatus != EStatus::Ok) {
-        return mCodePointHeightData[0];
+bool
+FontSTB::RasterizeGlyph(const CodePointData &codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) {
+    const float scale = GetScaleForHeight(height);
+    int x1, y1, x2, y2;
+
+    stbtt_GetGlyphBitmapBox(&mInfo, codePoint.glyph, scale, scale, &x1, &y1, &x2, &y2);
+
+    data.x               = x1;
+    data.y               = y1;
+    data.leftSideBearing = int(floor(codePoint.leftSideBearing * scale));
+    data.advanceWidth    = float(codePoint.advanceWidth) * scale;
+
+    const int w = (x2 - x1);
+    const int h = (y2 - y1);
+    if(w > 0 && h > 0) {
+        bitmap.pixels = std::make_unique<uint8_t[]>(size_t(w) * size_t(h));
+        bitmap.width  = w;
+        bitmap.height = h;
+        stbtt_MakeGlyphBitmap(&mInfo, bitmap.pixels.get(), w, h, w, scale, scale, codePoint.glyph);
     }
 
-    CodePointHeight cph;
-    cph.codePoint = index;
-    cph.height    = height;
-
-    auto cphd = mCodePointHeightData.find(cph.value);
-    if(cphd == mCodePointHeightData.end()) {
-        const CodePointData &codePoint = GetCodePointData(index);
-        if(codePoint.glyph == 0) {
-            return mCodePointHeightData[0];
-        }
-
-        float scale = GetScaleForHeight(height);
-        int x1, y1, x2, y2;
-
-        stbtt_GetGlyphBitmapBox(&mInfo, codePoint.glyph, scale, scale, &x1, &y1, &x2, &y2);
-
-        CodePointHeightData codePointHeight;
-        codePointHeight.glyph           = codePoint.glyph;
-        codePointHeight.x               = x1;
-        codePointHeight.y               = y1;
-        codePointHeight.leftSideBearing = int(floor(codePoint.leftSideBearing * scale));
-        codePointHeight.advanceWidth    = float(codePoint.advanceWidth) * scale;
-
-        int w = (x2 - x1);
-        int h = (y2 - y1);
-        if(w > 0 && h > 0) {
-            auto pixels = std::make_unique<uint8_t[]>(size_t(w) * size_t(h));
-            stbtt_MakeGlyphBitmap(&mInfo, pixels.get(), w, h, w, scale, scale, codePoint.glyph);
-
-            const int grown = ApplyAntialias(pixels, w, h);
-            codePointHeight.x -= grown;
-            codePointHeight.y -= grown;
-            PackGlyph(pixels.get(), uint32_t(w), uint32_t(h), codePointHeight);
-        }
-
-        cphd = mCodePointHeightData.insert({cph.value, codePointHeight}).first;
-    }
-
-    return cphd->second;
+    return true;
 }
 
 //-------------------------------------

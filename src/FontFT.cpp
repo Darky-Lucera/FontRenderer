@@ -28,10 +28,21 @@ namespace {
         FT_Int32       flags  = FT_LOAD_NO_BITMAP;
         const FT_Int32 target = monochrome ? FT_LOAD_TARGET_MONO : FT_LOAD_TARGET_NORMAL;
         switch (hinting) {
-            case FontFT::EHinting::None:   flags |= FT_LOAD_NO_HINTING;              break;
-            case FontFT::EHinting::Light:  flags |= FT_LOAD_TARGET_LIGHT;            break;
-            case FontFT::EHinting::Normal: flags |= target;                          break;
-            case FontFT::EHinting::Auto:   flags |= target | FT_LOAD_FORCE_AUTOHINT; break;
+            case FontFT::EHinting::None:
+                flags |= FT_LOAD_NO_HINTING;
+                break;
+
+            case FontFT::EHinting::Light:
+                flags |= FT_LOAD_TARGET_LIGHT;
+                break;
+
+            case FontFT::EHinting::Normal:
+                flags |= target;
+                break;
+
+            case FontFT::EHinting::Auto:
+                flags |= target | FT_LOAD_FORCE_AUTOHINT;
+                break;
         }
         return flags;
     }
@@ -176,80 +187,59 @@ FontFT::GetCodePointData(uint32_t index) {
 }
 
 //-------------------------------------
-const CodePointHeightData &
-FontFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
-    if (mStatus != EStatus::Ok) {
-        return mCodePointHeightData[0];
+bool
+FontFT::RasterizeGlyph(const CodePointData &codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) {
+    // The scale goes to FreeType as it is, in 16.16 fixed point, and it gives pixels in 26.6 fixed point.
+    const float        scale   = GetScaleForHeight(height);
+    FT_Size_RequestRec request {};
+    request.type   = FT_SIZE_REQUEST_TYPE_SCALES;
+    request.width  = FT_Long(::lround(double(scale) * 64.0 * 65536.0));
+    request.height = request.width;
+
+    FT_Face face = mFace.get();
+    const FT_Render_Mode renderMode = mMonochrome ? FT_RENDER_MODE_MONO : FT_RENDER_MODE_NORMAL;
+    if (FT_Request_Size(face, &request) != 0 || FT_Load_Glyph(face, FT_UInt(codePoint.glyph), GetLoadFlags(mHinting, mMonochrome)) != 0 ||
+        FT_Render_Glyph(face->glyph, renderMode) != 0) {
+        return false;
     }
 
-    CodePointHeight cph;
-    cph.codePoint = index;
-    cph.height    = height;
+    const FT_GlyphSlot slot   = face->glyph;
+    const FT_Bitmap    &source = slot->bitmap;
 
-    auto cphd = mCodePointHeightData.find(cph.value);
-    if (cphd == mCodePointHeightData.end()) {
-        const CodePointData &codePoint = GetCodePointData(index);
-        if (codePoint.glyph == 0) {
-            return mCodePointHeightData[0];
-        }
+    data.x               = slot->bitmap_left;
+    data.y               = -slot->bitmap_top;
+    data.leftSideBearing = int(floor(codePoint.leftSideBearing * scale));
+    // Normal and Auto hinting fit each glyph to an advance of whole pixels, so the text must use that advance.
+    // Light hinting leaves the fractional advance of the outline, as FreeType recommends.
+    const bool roundsAdvances = (mHinting == EHinting::Normal || mHinting == EHinting::Auto);
+    data.advanceWidth    = roundsAdvances ? float(slot->advance.x) / 64.0f : float(codePoint.advanceWidth) * scale;
 
-        // The scale goes to FreeType as it is, in 16.16 fixed point, and it gives pixels in 26.6 fixed point.
-        const float        scale   = GetScaleForHeight(height);
-        FT_Size_RequestRec request {};
-        request.type   = FT_SIZE_REQUEST_TYPE_SCALES;
-        request.width  = FT_Long(::lround(double(scale) * 64.0 * 65536.0));
-        request.height = request.width;
-
-        FT_Face face = mFace.get();
-        const FT_Render_Mode renderMode = mMonochrome ? FT_RENDER_MODE_MONO : FT_RENDER_MODE_NORMAL;
-        if (FT_Request_Size(face, &request) != 0 || FT_Load_Glyph(face, FT_UInt(codePoint.glyph), GetLoadFlags(mHinting, mMonochrome)) != 0 ||
-            FT_Render_Glyph(face->glyph, renderMode) != 0) {
-            return mCodePointHeightData[0];
-        }
-
-        const FT_GlyphSlot slot   = face->glyph;
-        const FT_Bitmap    &bitmap = slot->bitmap;
-
-        CodePointHeightData codePointHeight;
-        codePointHeight.glyph           = codePoint.glyph;
-        codePointHeight.x               = slot->bitmap_left;
-        codePointHeight.y               = -slot->bitmap_top;
-        codePointHeight.leftSideBearing = int(floor(codePoint.leftSideBearing * scale));
-        // Normal and Auto hinting fit each glyph to an advance of whole pixels, so the text must use that advance.
-        // Light hinting leaves the fractional advance of the outline, as FreeType recommends.
-        const bool roundsAdvances       = (mHinting == EHinting::Normal || mHinting == EHinting::Auto);
-        codePointHeight.advanceWidth    = roundsAdvances ? float(slot->advance.x) / 64.0f : float(codePoint.advanceWidth) * scale;
-
-        int w = int(bitmap.width);
-        int h = int(bitmap.rows);
-        if (w > 0 && h > 0) {
-            // A FreeType bitmap can pad its rows, and a negative pitch stores them from the bottom up.
-            // A monochrome bitmap has one bit per pixel, the leftmost pixel in the highest bit.
-            auto         pixels = std::make_unique<uint8_t[]>(size_t(w) * size_t(h));
-            const size_t pitch  = size_t(std::abs(bitmap.pitch));
-            for (int y = 0; y < h; ++y) {
-                const uint8_t *source = bitmap.buffer + size_t((bitmap.pitch >= 0) ? y : h - 1 - y) * pitch;
-                uint8_t       *target = &pixels[size_t(y) * size_t(w)];
-                if (bitmap.pixel_mode == FT_PIXEL_MODE_MONO) {
-                    for (int x = 0; x < w; ++x) {
-                        target[x] = (source[x >> 3] & (0x80 >> (x & 7))) ? 255 : 0;
-                    }
-                }
-                else {
-                    memcpy(target, source, size_t(w));
+    const int w = int(source.width);
+    const int h = int(source.rows);
+    if (w > 0 && h > 0) {
+        // A FreeType bitmap can pad its rows, and a negative pitch stores them from the bottom up.
+        // A monochrome bitmap has one bit per pixel, the leftmost pixel in the highest bit.
+        auto         pixels = std::make_unique<uint8_t[]>(size_t(w) * size_t(h));
+        const size_t pitch  = size_t(std::abs(source.pitch));
+        for (int y = 0; y < h; ++y) {
+            const uint8_t *row    = source.buffer + size_t((source.pitch >= 0) ? y : h - 1 - y) * pitch;
+            uint8_t       *target = &pixels[size_t(y) * size_t(w)];
+            if (source.pixel_mode == FT_PIXEL_MODE_MONO) {
+                for (int x = 0; x < w; ++x) {
+                    target[x] = (row[x >> 3] & (0x80 >> (x & 7))) ? 255 : 0;
                 }
             }
-
-            const int grown = ApplyAntialias(pixels, w, h);
-            codePointHeight.x -= grown;
-            codePointHeight.y -= grown;
-            PackGlyph(pixels.get(), uint32_t(w), uint32_t(h), codePointHeight);
+            else {
+                memcpy(target, row, size_t(w));
+            }
         }
 
-        cphd = mCodePointHeightData.insert({cph.value, codePointHeight}).first;
+        bitmap.pixels = std::move(pixels);
+        bitmap.width  = w;
+        bitmap.height = h;
     }
 
-    return cphd->second;
+    return true;
 }
 
 //-------------------------------------

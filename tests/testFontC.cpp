@@ -2,6 +2,7 @@
 #include "testHelpers.h"
 //-------------------------------------
 #include <doctest/doctest.h>
+#include <vector>
 
 extern "C" int fr_test_c_api(const char *font_name, fr_font_backend backend);
 
@@ -149,3 +150,104 @@ TEST_CASE("Font C API only applies the FreeType settings to FreeType fonts") {
     fr_font_destroy(font);
 #endif
 }
+
+#if defined(FONTRENDERER_USE_BAKED)
+//-------------------------------------
+TEST_CASE("Font C API saves and loads baked fonts") {
+    using MindShake::Test::kMetricsPath;
+    using MindShake::Test::kTexturePath;
+
+    const char *kText  = "Hello AV";
+    fr_font    *font   = nullptr;
+    REQUIRE(fr_font_create(MindShake::Test::kFontPath, kBackend, &font) == FR_STATUS_OK);
+    REQUIRE(fr_font_preload(font, kText, 24) == FR_STATUS_OK);
+    REQUIRE(fr_font_load_all_kerning_pairs(font) == FR_STATUS_OK);
+    REQUIRE(fr_font_save_baked(font, kMetricsPath, kTexturePath) == FR_STATUS_OK);
+
+    fr_font *baked = nullptr;
+    REQUIRE(fr_font_create_baked(kMetricsPath, kTexturePath, &baked) == FR_STATUS_OK);
+    std::vector<uint32_t> expected(128 * 64, 0);
+    std::vector<uint32_t> buffer(128 * 64, 0);
+    CHECK(fr_font_draw_text(font, kText, 24, 0xffffffffu, expected.data(), 128, 4, 4) == FR_STATUS_OK);
+    CHECK(fr_font_draw_text(baked, kText, 24, 0xffffffffu, buffer.data(), 128, 4, 4) == FR_STATUS_OK);
+    CHECK(buffer == expected);
+    CHECK(fr_font_get_texture(baked) != nullptr);
+    CHECK(fr_font_get_used_texture_width(baked) == fr_font_get_texture_width(baked));
+
+    // A baked font cannot render new glyphs, so nothing about how they are rendered applies.
+    CHECK(fr_font_reset(baked) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_preload(baked, "x", 24) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_load_all_kerning_pairs(baked) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_save_baked(baked, kMetricsPath, kTexturePath) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_set_texture_growth(baked, FR_FONT_TEXTURE_GROWTH_BOTH) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_set_size_mode(baked, FR_FONT_SIZE_MODE_EM_SIZE) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_set_glyph_padding(baked, 2) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_set_packing_heuristic(baked, FR_FONT_PACKING_LEVEL_MIN_WASTE_FIT) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_set_antialias(baked, true) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_set_antialias_allow_ex(baked, true) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_set_antialias_weights(baked, 1, 1, 1) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_ft_set_hinting(baked, FR_FONT_FT_HINTING_LIGHT) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_get_texture_growth(baked) == FR_FONT_TEXTURE_GROWTH_INVALID);
+    CHECK(fr_font_get_size_mode(baked) == FR_FONT_SIZE_MODE_INVALID);
+    CHECK(fr_font_get_glyph_padding(baked) == 0);
+    CHECK(fr_font_get_packing_heuristic(baked) == FR_FONT_PACKING_INVALID);
+    CHECK(fr_font_get_antialias(baked) == false);
+    CHECK(fr_font_get_antialias_allow_ex(baked) == false);
+    CHECK(fr_font_get_antialias_center(baked) == 0);
+
+    fr_font        *gpu   = nullptr;
+    const uint32_t width  = fr_font_get_texture_width(baked);
+    const uint32_t height = fr_font_get_texture_height(baked);
+    REQUIRE(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width, height, &gpu) == FR_STATUS_OK);
+    CHECK(fr_font_get_texture(gpu) == nullptr);
+    size_t count = 0;
+    CHECK(fr_font_get_glyph_quads(gpu, "Hello", 24, nullptr, 0, &count) == FR_STATUS_OK);
+    CHECK(count == 5);
+    fr_font_destroy(gpu);
+
+    CHECK(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width + 1, height, &gpu) == FR_STATUS_INVALID_FONT);
+    CHECK(gpu == nullptr);
+
+    fr_font_destroy(baked);
+    fr_font_destroy(font);
+}
+
+//-------------------------------------
+TEST_CASE("Font C API reports baked font errors") {
+    using MindShake::Test::kMetricsPath;
+    using MindShake::Test::kTexturePath;
+
+    fr_font *font = nullptr;
+    CHECK(fr_font_create_baked(nullptr, kTexturePath, &font) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_create_baked(kMetricsPath, nullptr, &font) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_create_baked(kMetricsPath, kTexturePath, nullptr) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_create_baked_with_texture(nullptr, nullptr, 1, 1, &font) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_create_baked("this-file-does-not-exist.frb", kTexturePath, &font) == FR_STATUS_CANNOT_OPEN_FILE);
+    CHECK(font == nullptr);
+
+    REQUIRE(fr_font_create(MindShake::Test::kFontPath, kBackend, &font) == FR_STATUS_OK);
+    size_t        count = 1;
+    fr_glyph_quad quad;
+    CHECK(fr_font_preload(font, nullptr, 24) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_save_baked(font, nullptr, kTexturePath) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_save_baked(font, kMetricsPath, nullptr) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_save_baked(font, FONT_RENDERER_TEST_OUTPUT "missing/baked.frb", kTexturePath) == FR_STATUS_CANNOT_WRITE_FILE);
+    CHECK(fr_font_get_glyph_quads(font, "x", 24, nullptr, 1, &count) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(count == 0);
+    CHECK(fr_font_get_glyph_quads(font, "x", 24, &quad, 1, nullptr) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_get_glyph_quads(nullptr, "x", 24, &quad, 1, &count) == FR_STATUS_INVALID_ARGUMENT);
+
+    // With the texture height fixed at 128, a 255 pixel 'W' fits in neither orientation.
+    CHECK(fr_font_set_texture_growth(font, FR_FONT_TEXTURE_GROWTH_WIDTH) == FR_STATUS_OK);
+    CHECK(fr_font_preload(font, "W", 255) == FR_STATUS_TEXTURE_FULL);
+    fr_font_destroy(font);
+}
+#else
+//-------------------------------------
+TEST_CASE("Font C API rejects baked fonts without the baked backend") {
+    fr_font *font = nullptr;
+    CHECK(fr_font_create_baked(MindShake::Test::kMetricsPath, MindShake::Test::kTexturePath, &font) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_create_baked_with_texture(MindShake::Test::kMetricsPath, nullptr, 1, 1, &font) == FR_STATUS_INVALID_BACKEND);
+    CHECK(font == nullptr);
+}
+#endif

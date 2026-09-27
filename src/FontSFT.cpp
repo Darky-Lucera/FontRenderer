@@ -93,72 +93,49 @@ FontSFT::GetCodePointData(uint32_t index) {
 }
 
 //-------------------------------------
-const CodePointHeightData &
-FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
-    if(mStatus != EStatus::Ok) {
-        return mCodePointHeightData[0];
+bool
+FontSFT::RasterizeGlyph(const CodePointData &codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) {
+    SFT sft {};
+    sft.xScale = double(GetScaleForHeight(height)) * mUnitsPerEm;
+    sft.yScale = sft.xScale;
+    sft.font   = mFont.get();
+    sft.flags  = SFT_DOWNWARD_Y;
+    SFT_GMetrics metrics{};
+    if (sft_gmetrics(&sft, codePoint.glyph, &metrics) < 0) {
+        return false;
     }
 
-    CodePointHeight cph;
-    cph.codePoint = index;
-    cph.height    = height;
+    data.x               = metrics.xOffset;
+    data.y               = metrics.yOffset;
+    data.leftSideBearing = int(floor(metrics.leftSideBearing));
+    data.advanceWidth    = float(metrics.advanceWidth);
 
-    auto cphd = mCodePointHeightData.find(cph.value);
-    if(cphd == mCodePointHeightData.end()) {
-        const CodePointData &codePoint = GetCodePointData(index);
-        if(codePoint.glyph == 0) {
-            return mCodePointHeightData[0];
+    int w = metrics.minWidth;
+    int h = metrics.minHeight;
+    // A glyph without an outline has no size. With a zero scale, only libschrift's extra row and column are left.
+    if(w > 1 && h > 1) {
+        auto pixels = std::make_unique<uint8_t[]>(size_t(w) * size_t(h));
+        SFT_Image img {};
+        img.width  = w;
+        img.height = h;
+        img.pixels = pixels.get();
+        if (sft_render(&sft, codePoint.glyph, img) < 0) {
+            return false;
         }
 
-        SFT sft {};
-        sft.xScale = double(GetScaleForHeight(height)) * mUnitsPerEm;
-        sft.yScale = sft.xScale;
-        sft.font   = mFont.get();
-        sft.flags  = SFT_DOWNWARD_Y;
-        SFT_GMetrics metrics{};
-        if (sft_gmetrics(&sft, codePoint.glyph, &metrics) < 0) {
-            return mCodePointHeightData[0];
-        }
+        // libschrift sizes the image from the bounding box stored in the font, plus one row and column
+        // that stay empty unless the outline exceeds that box. Drop them so both backends clip the same way.
+        const int trimmedWidth  = w - 1;
+        const int trimmedHeight = h - 1;
+        for(int y = 1; y < trimmedHeight; ++y)
+            memmove(&pixels[size_t(y) * size_t(trimmedWidth)], &pixels[size_t(y) * size_t(w)], size_t(trimmedWidth));
 
-        CodePointHeightData codePointHeight;
-        codePointHeight.glyph           = codePoint.glyph;
-        codePointHeight.x               = metrics.xOffset;
-        codePointHeight.y               = metrics.yOffset;
-        codePointHeight.leftSideBearing = int(floor(metrics.leftSideBearing));
-        codePointHeight.advanceWidth    = float(metrics.advanceWidth);
-
-        int w = metrics.minWidth;
-        int h = metrics.minHeight;
-        // A glyph without an outline has no size. With a zero scale, only libschrift's extra row and column are left.
-        if(w > 1 && h > 1) {
-            auto pixels = std::make_unique<uint8_t[]>(size_t(w) * size_t(h));
-            SFT_Image img {};
-            img.width  = w;
-            img.height = h;
-            img.pixels = pixels.get();
-            if (sft_render(&sft, codePoint.glyph, img) < 0) {
-                return mCodePointHeightData[0];
-            }
-
-            // libschrift sizes the image from the bounding box stored in the font, plus one row and column
-            // that stay empty unless the outline exceeds that box. Drop them so both backends clip the same way.
-            const int trimmedWidth  = w - 1;
-            const int trimmedHeight = h - 1;
-            for(int y = 1; y < trimmedHeight; ++y)
-                memmove(&pixels[size_t(y) * size_t(trimmedWidth)], &pixels[size_t(y) * size_t(w)], size_t(trimmedWidth));
-            w = trimmedWidth;
-            h = trimmedHeight;
-
-            const int grown = ApplyAntialias(pixels, w, h);
-            codePointHeight.x -= grown;
-            codePointHeight.y -= grown;
-            PackGlyph(pixels.get(), uint32_t(w), uint32_t(h), codePointHeight);
-        }
-
-        cphd = mCodePointHeightData.insert({cph.value, codePointHeight}).first;
+        bitmap.pixels = std::move(pixels);
+        bitmap.width  = trimmedWidth;
+        bitmap.height = trimmedHeight;
     }
 
-    return cphd->second;
+    return true;
 }
 
 //-------------------------------------

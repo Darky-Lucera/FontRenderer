@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(FontRenderer VERSION 0.5.0)
+project(FontRenderer VERSION 0.6.0)
 
 # Options
 #--------------------------------------
@@ -16,9 +16,21 @@ option(FONTRENDERER_BUILD_TESTS    "Build the unit tests"                       
 option(FONTRENDERER_USE_STB        "Build the stb_truetype backend"                      ON)
 option(FONTRENDERER_USE_LIBSCHRIFT "Build the libschrift backend"                        ON)
 option(FONTRENDERER_USE_FREETYPE   "Build the FreeType backend"                          OFF)
+option(FONTRENDERER_USE_BAKED      "Build the backend that reads baked fonts"            ON)
 
-if(NOT FONTRENDERER_USE_STB AND NOT FONTRENDERER_USE_LIBSCHRIFT AND NOT FONTRENDERER_USE_FREETYPE)
-    message(FATAL_ERROR "FontRenderer needs FONTRENDERER_USE_STB, FONTRENDERER_USE_LIBSCHRIFT or FONTRENDERER_USE_FREETYPE")
+if(FONTRENDERER_USE_STB OR FONTRENDERER_USE_LIBSCHRIFT OR FONTRENDERER_USE_FREETYPE)
+    set(FONTRENDERER_HAS_RASTERIZER ON)
+else()
+    set(FONTRENDERER_HAS_RASTERIZER OFF)
+endif()
+
+if(NOT FONTRENDERER_HAS_RASTERIZER AND NOT FONTRENDERER_USE_BAKED)
+    message(FATAL_ERROR "FontRenderer needs FONTRENDERER_USE_STB, FONTRENDERER_USE_LIBSCHRIFT, FONTRENDERER_USE_FREETYPE or FONTRENDERER_USE_BAKED")
+endif()
+
+# The examples render glyphs from a font file.
+if(NOT FONTRENDERER_HAS_RASTERIZER)
+    set(FONTRENDERER_BUILD_EXAMPLES OFF)
 endif()
 
 # Dependencies
@@ -135,18 +147,26 @@ endif()
 
 #--------------------------------------
 set(SRC_FontRenderer
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Font.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Font.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontBase.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontC.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontC.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/GposKerning.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/GposKerning.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MappedFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MappedFile.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Tga.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Tga.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/UTF8_Utils.h
 )
+if(FONTRENDERER_HAS_RASTERIZER)
+    list(APPEND SRC_FontRenderer
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Font.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Font.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/GposKerning.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/GposKerning.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.cpp
+    )
+endif()
 if(FONTRENDERER_USE_STB)
     list(APPEND SRC_FontRenderer
         ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.cpp
@@ -168,6 +188,12 @@ if(FONTRENDERER_USE_FREETYPE)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/FontFT.h
     )
 endif()
+if(FONTRENDERER_USE_BAKED)
+    list(APPEND SRC_FontRenderer
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/FontBaked.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/FontBaked.h
+    )
+endif()
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" FILES ${SRC_FontRenderer})
 
 add_library(fontRenderer STATIC
@@ -186,6 +212,9 @@ endif()
 if(FONTRENDERER_USE_FREETYPE)
     target_compile_definitions(fontRenderer PUBLIC FONTRENDERER_USE_FREETYPE)
     target_link_libraries(fontRenderer PRIVATE Freetype::Freetype)
+endif()
+if(FONTRENDERER_USE_BAKED)
+    target_compile_definitions(fontRenderer PUBLIC FONTRENDERER_USE_BAKED)
 endif()
 
 #--------------------------------------
@@ -233,15 +262,30 @@ if(FONTRENDERER_BUILD_TESTS)
 
     set(SRC_UnitTests
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testMain.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testHelpers.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testDrawText.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFont.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFontC.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFontC.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testGposKerning.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testSkylineBinPack.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testTga.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testUTF8.cpp
     )
+    # The other tests render glyphs from a font file, also to create the files of FontBaked.
+    if(FONTRENDERER_HAS_RASTERIZER)
+        list(APPEND SRC_UnitTests
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/testHelpers.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/testDrawText.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFont.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFontC.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFontC.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/testGposKerning.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/testSkylineBinPack.cpp
+        )
+        if(FONTRENDERER_USE_BAKED)
+            list(APPEND SRC_UnitTests
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFontBaked.cpp
+            )
+        endif()
+    else()
+        list(APPEND SRC_UnitTests
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFontCBakedOnly.cpp
+        )
+    endif()
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/tests" FILES ${SRC_UnitTests})
 
     add_executable(unitTests
@@ -249,6 +293,7 @@ if(FONTRENDERER_BUILD_TESTS)
     )
     target_include_directories(unitTests PRIVATE tests tests/external)
     target_compile_definitions(unitTests PRIVATE FONT_RENDERER_TEST_RESOURCES="${CMAKE_CURRENT_SOURCE_DIR}/bin/resources/")
+    target_compile_definitions(unitTests PRIVATE FONT_RENDERER_TEST_OUTPUT="${CMAKE_CURRENT_BINARY_DIR}/")
     target_link_libraries(unitTests fontRenderer)
     # The tests render with FreeType itself, to check that FontFT draws the same.
     if(FONTRENDERER_USE_FREETYPE)

@@ -286,3 +286,19 @@ example_get_fps(void) {
 
     return fps;
 }
+
+//-------------------------------------
+long
+example_get_file_size(const char *file_name) {
+    FILE *file = fopen(file_name, "rb");
+    long size;
+
+    if(file == NULL) {
+        return 0;
+    }
+
+    fseek(file, 0, SEEK_END);
+    size = ftell(file);
+    fclose(file);
+    return size;
+}

@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <random>
+#include <string>
 #include <vector>
 
 using namespace MindShake;
@@ -45,7 +46,7 @@ namespace {
         int            errors  = 0;
 
         for(const auto &entry : font.mCodePointHeightData) {
-            if(entry.second.glyph <= 0) {
+            if(entry.second.glyph <= 0 || entry.second.GetWidth() == 0) {
                 continue;
             }
 
@@ -423,6 +424,182 @@ TEST_CASE_TEMPLATE("Font reads kerning from GPOS", TFont, FONT_BACKENDS) {
 
     CHECK(font.GetKerning(a, v) < 0);
     CHECK(font.GetKerning(a, a) == 0);
+}
+
+//-------------------------------------
+TEST_CASE_TEMPLATE("Font preload draws the same as rendering each glyph when it is drawn", TFont, FONT_BACKENDS) {
+    std::string text;
+    for(char c = ' '; c <= '~'; ++c) {
+        text += c;
+    }
+    for(const char *sample : kTexts) {
+        text += sample;
+    }
+
+    TFont preloaded;
+    TFont lazy;
+    for(TFont *font : { &preloaded, &lazy }) {
+        font->SetAntialias(true);
+        font->SetAntialiasAllowEx(true);
+    }
+
+    // At 90 pixels the glyphs do not fit in the first texture, so it has to grow.
+    for(int height : { 17, 90 }) {
+        CAPTURE(height);
+        const uint32_t textureHeight = preloaded.GetTextureHeight();
+        REQUIRE(preloaded.Preload(text.c_str(), uint8_t(height)));
+        CHECK(preloaded.GetTextureHeight() >= textureHeight);
+
+        const uint32_t version = preloaded.GetTextureVersion();
+        for(const char *text : kTexts) {
+            CAPTURE(text);
+            std::vector<uint32_t> expected(900 * 400, 0);
+            std::vector<uint32_t> buffer(900 * 400, 0);
+            lazy.DrawText(text, uint8_t(height), 0xffffffffu, expected.data(), 900, 20, 20);
+            preloaded.DrawText(text, uint8_t(height), 0xffffffffu, buffer.data(), 900, 20, 20);
+            CHECK(buffer == expected);
+        }
+        CHECK(preloaded.GetTextureVersion() == version);
+    }
+
+    CHECK(preloaded.GetTextureHeight() > 128);
+    // The 95 printable ASCII characters, and ¿, ó and á, at two heights.
+    CHECK(preloaded.GetGlyphCount() == 2 * 98);
+    CHECK(CountPaddingErrors(preloaded) == 0);
+}
+
+//-------------------------------------
+TEST_CASE_TEMPLATE("Font skips the code points the font does not have", TFont, FONT_BACKENDS) {
+    // U+E000 is private use, and U+10FFFF is not a character.
+    const char *kMissing = "H\xee\x80\x80H\xf4\x8f\xbf\xbf";
+    TFont      font;
+    REQUIRE(font.GetCodePointDataForHeight(0xE000, 30).glyph == 0);
+    REQUIRE(font.GetCodePointDataForHeight(0x10FFFF, 30).glyph == 0);
+
+    CHECK(font.Preload(kMissing, 30));
+    CHECK(font.GetGlyphCount() == 1);
+
+    std::vector<uint32_t> expected(200 * 60, 0);
+    std::vector<uint32_t> buffer(200 * 60, 0);
+    font.DrawText("HH", 30, 0xffffffffu, expected.data(), 200, 4, 4);
+    font.DrawText(kMissing, 30, 0xffffffffu, buffer.data(), 200, 4, 4);
+    CHECK(buffer == expected);
+
+    Font::Rect expectedBox, box;
+    font.GetTextBox("HH", 30, &expectedBox);
+    font.GetTextBox(kMissing, 30, &box);
+    CHECK(box.x     == expectedBox.x);
+    CHECK(box.width == expectedBox.width);
+
+    std::vector<GlyphQuad> quads;
+    font.GetGlyphQuads(kMissing, 30, quads);
+    CHECK(quads.size() == 2);
+    CHECK(font.GetGlyphCount() == 1);
+}
+
+//-------------------------------------
+TEST_CASE_TEMPLATE("Font preload reports glyphs that do not fit", TFont, FONT_BACKENDS) {
+    // With the texture height fixed at 128, a 255 pixel 'W' fits in neither orientation, while the dot does.
+    TFont font;
+    font.SetTextureGrowth(Font::ETextureGrowth::Width);
+
+    CHECK_FALSE(font.Preload("W.", 255));
+    CHECK(font.GetCodePointDataForHeight('W', 255).glyph > 0);
+    CHECK(font.GetCodePointDataForHeight('W', 255).GetWidth() == 0);
+    CHECK(font.GetCodePointDataForHeight('.', 255).GetWidth() > 0);
+    CHECK(font.GetGlyphCount() == 2);
+
+    CHECK(font.Preload("", 20));
+    CHECK(font.Preload(nullptr, 20));
+}
+
+//-------------------------------------
+TEST_CASE_TEMPLATE("Font loads the kerning of every pair of rendered glyphs", TFont, FONT_BACKENDS) {
+    TFont font;
+    REQUIRE(font.Preload("AVTaeoy.,", 20));
+    font.LoadAllKerningPairs();
+
+    int kernedPairs = 0;
+    for(const char left : std::string("AVTaeoy.,")) {
+        for(const char right : std::string("AVTaeoy.,")) {
+            CAPTURE(left);
+            CAPTURE(right);
+            const uint32_t leftGlyph  = font.GetCodePointGlyph(uint32_t(left));
+            const uint32_t rightGlyph = font.GetCodePointGlyph(uint32_t(right));
+            const int      kerning    = font.LookUpKerning(leftGlyph, rightGlyph);
+            const auto     cached     = font.mKerningData.find((uint64_t(leftGlyph) << 32) | rightGlyph);
+            // Pairs without kerning are not kept.
+            CHECK((cached != font.mKerningData.end()) == (kerning != 0));
+            if(cached != font.mKerningData.end()) {
+                CHECK(cached->second == kerning);
+                ++kernedPairs;
+            }
+        }
+    }
+    CHECK(kernedPairs > 10);
+}
+
+//-------------------------------------
+TEST_CASE("Font texture version changes only with the texels") {
+    Inspectable<Test::DefaultFont> font;
+    std::vector<uint32_t>          buffer(64 * 64, 0);
+
+    const uint32_t loaded = font.GetTextureVersion();
+    font.DrawText("A", 20, 0xffffffffu, buffer.data(), 64, 0, 0);
+    const uint32_t drawn = font.GetTextureVersion();
+    CHECK(drawn != loaded);
+
+    font.DrawText("A", 20, 0xffffffffu, buffer.data(), 64, 0, 0);
+    font.DrawText(" ", 20, 0xffffffffu, buffer.data(), 64, 0, 0);
+    CHECK(font.GetTextureVersion() == drawn);
+
+    font.Reset();
+    CHECK(font.GetTextureVersion() != drawn);
+}
+
+//-------------------------------------
+TEST_CASE_TEMPLATE("Font glyph quads place the texels where DrawText draws them", TFont, FONT_BACKENDS) {
+    TFont font;
+    font.SetAntialias(true);
+    font.SetAntialiasAllowEx(true);
+
+    const int kWidth = 900, kHeight = 400, kPosX = 30, kPosY = 20;
+    int       rotated = 0;
+    for(const char *text : kTexts) {
+        for(int height : { 12, 32, 57 }) {
+            CAPTURE(text);
+            CAPTURE(height);
+
+            std::vector<uint32_t> expected(kWidth * kHeight, 0);
+            font.DrawText(text, uint8_t(height), 0xffffffffu, expected.data(), kWidth, kPosX, kPosY);
+
+            // Blends white as DrawText does, so overlapping glyphs give the same result.
+            std::vector<GlyphQuad> quads;
+            font.GetGlyphQuads(text, uint8_t(height), quads);
+            std::vector<uint32_t> buffer(kWidth * kHeight, 0);
+            const uint8_t         *texels      = font.GetTexture();
+            const size_t          textureWidth = font.GetTextureWidth();
+            for(const GlyphQuad &quad : quads) {
+                rotated += quad.rotated ? 1 : 0;
+                for(int y = 0; y < quad.height; ++y) {
+                    for(int x = 0; x < quad.width; ++x) {
+                        const size_t  tx       = size_t(quad.textureRect.x + (quad.rotated ? y : x));
+                        const size_t  ty       = size_t(quad.textureRect.y + (quad.rotated ? x : y));
+                        const uint8_t coverage = texels[ty * textureWidth + tx];
+                        if(coverage != 0) {
+                            uint32_t       &pixel   = buffer[size_t(kPosY + quad.y + y) * kWidth + size_t(kPosX + quad.x + x)];
+                            const uint32_t previous = pixel & 0xff;
+                            const uint32_t channel  = (255 * coverage + previous * (255 - coverage)) / 255;
+                            pixel = 0xff000000u | (channel << 16) | (channel << 8) | channel;
+                        }
+                    }
+                }
+            }
+            CHECK(buffer == expected);
+        }
+    }
+
+    CHECK(rotated > 0);
 }
 
 #if defined(FONT_OTHER_BACKENDS)

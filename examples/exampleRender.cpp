@@ -8,6 +8,9 @@
 #if defined(FONTRENDERER_USE_STB)
     #include <FontSTB.h>
 #endif
+#if defined(FONTRENDERER_USE_BAKED)
+    #include <FontBaked.h>
+#endif
 //-------------------------------------
 #include <algorithm>
 #include <cstdio>
@@ -55,13 +58,29 @@ static const char       *kFontPath      = "resources/Roboto-Regular.ttf";
 static const char       *kHintings[]    = { "none", "light", "normal", "auto" };
 #endif
 
+#if defined(FONTRENDERER_USE_BAKED)
+// The font of the shown atlas, saved with S and read back from its files. It keeps the settings it was saved with.
+//-------------------------------------
+struct Baked {
+    std::unique_ptr<MindShake::FontBaked>   font;
+    size_t                                  source {};              // The backend it was saved from
+    long                                    metricsBytes {};
+    long                                    textureBytes {};
+};
+
+static Baked            gBaked;
+static const char       *kBakedMetricsPath = "baked.frb";
+static const char       *kBakedTexturePath = "baked.tga";
+static const uint8_t    kBakedSize         = 18;
+#endif
+
 //-------------------------------------
 using Rect = MindShake::SkylineBinPack::Rect;
 
 // Returns the box of the text, relative to the window, and adds the time DrawText took to gDrawSeconds.
 //-------------------------------------
 static Rect
-RenderText(MindShake::Font &font, const char *text, uint8_t height, uint32_t color, int32_t x, int32_t y, struct mfb_timer *timer) {
+RenderText(MindShake::FontBase &font, const char *text, uint8_t height, uint32_t color, int32_t x, int32_t y, struct mfb_timer *timer) {
     Rect box {};
     font.GetTextBox(text, height, &box);
     if (gShowBoundingBox) {
@@ -142,9 +161,10 @@ GetStatusHeight() {
 #endif
 }
 
+// textFont writes the label, because a baked font only has the glyphs it was saved with.
 //-------------------------------------
 static void
-RenderAtlas(MindShake::Font &font, const char *name, int32_t top) {
+RenderAtlas(const MindShake::FontBase &font, MindShake::FontBase &textFont, const char *name, int32_t top) {
     const int32_t left   = kMargin;
     const int32_t right  = std::min(int32_t(g_screen.width) - kMargin, int32_t(g_screen.width));
     const int32_t bottom = std::min(int32_t(g_screen.height) - GetStatusHeight() - kMargin, int32_t(g_screen.height));
@@ -153,7 +173,7 @@ RenderAtlas(MindShake::Font &font, const char *name, int32_t top) {
     snprintf(label, sizeof(label), u8"Atlas of %s: %u × %u, %u × %u used", name,
              unsigned(font.GetTextureWidth()), unsigned(font.GetTextureHeight()),
              unsigned(font.GetUsedTextureWidth()), unsigned(font.GetUsedTextureHeight()));
-    font.DrawText(label, 14, kStatusColor, g_screen.buffer, g_screen.width, left, top);
+    textFont.DrawText(label, 14, kStatusColor, g_screen.buffer, g_screen.width, left, top);
     top += 22;
 
     // The checkerboard shows which texels are empty. A texture bigger than the panel is cropped.
@@ -175,6 +195,87 @@ RenderAtlas(MindShake::Font &font, const char *name, int32_t top) {
 }
 
 //-------------------------------------
+static size_t
+GetAtlasCount() {
+#if defined(FONTRENDERER_USE_BAKED)
+    if (gBaked.font != nullptr) {
+        return gBackends.size() + 1;
+    }
+#endif
+    return gBackends.size();
+}
+
+//-------------------------------------
+static void
+RenderShownAtlas(int32_t top) {
+#if defined(FONTRENDERER_USE_BAKED)
+    if (gShowTextureId == gBackends.size()) {
+        Backend &source = gBackends[gBaked.source];
+        char    name[64];
+        snprintf(name, sizeof(name), "baked %s", source.name);
+        source.font->SetClipping(g_screen.clip_left, g_screen.clip_top, g_screen.clip_right, g_screen.clip_bottom);
+        RenderAtlas(*gBaked.font, *source.font, name, top);
+        return;
+    }
+#endif
+
+    Backend &backend = gBackends[gShowTextureId];
+    backend.font->SetClipping(g_screen.clip_left, g_screen.clip_top, g_screen.clip_right, g_screen.clip_bottom);
+    RenderAtlas(*backend.font, *backend.font, backend.name, top);
+}
+
+#if defined(FONTRENDERER_USE_BAKED)
+//-------------------------------------
+static void
+BakeFont(size_t source) {
+    MindShake::Font &font = *gBackends[source].font;
+
+    // The label of the row needs the name of the backend and the digits of the sizes.
+    char glyphs[256];
+    snprintf(glyphs, sizeof(glyphs), u8"%s Baked from %s · files: 0123456789 + bytes", kGreeting, gBackends[source].name);
+    font.Preload(glyphs, kBakedSize);
+    font.LoadAllKerningPairs();
+
+    const MindShake::Font::EStatus saved = font.SaveBaked(kBakedMetricsPath, kBakedTexturePath);
+    if (saved != MindShake::Font::EStatus::Ok) {
+        fprintf(stderr, "Cannot save the baked font (status %d).\n", int(saved));
+        return;
+    }
+
+    auto baked = std::make_unique<MindShake::FontBaked>(kBakedMetricsPath, kBakedTexturePath);
+    if (baked->GetStatus() != MindShake::Font::EStatus::Ok) {
+        fprintf(stderr, "Cannot load the baked font (status %d).\n", int(baked->GetStatus()));
+        return;
+    }
+
+    gBaked.font         = std::move(baked);
+    gBaked.source       = source;
+    gBaked.metricsBytes = example_get_file_size(kBakedMetricsPath);
+    gBaked.textureBytes = example_get_file_size(kBakedTexturePath);
+    gShowTextureId      = gBackends.size();
+}
+
+// Returns the bottom of the row.
+//-------------------------------------
+static int32_t
+RenderBakedRow(int32_t top, struct mfb_timer *timer) {
+    MindShake::FontBaked &font   = *gBaked.font;
+    const Backend        &source = gBackends[gBaked.source];
+
+    font.SetClipping(g_screen.clip_left, g_screen.clip_top, g_screen.clip_right, g_screen.clip_bottom);
+
+    char label[96];
+    snprintf(label, sizeof(label), u8"Baked from %s · files: %ld + %ld bytes", source.name, gBaked.metricsBytes, gBaked.textureBytes);
+    Rect labelBox {};
+    font.GetTextBox(label, kBakedSize, &labelBox);
+    font.DrawText(label, kBakedSize, source.color, g_screen.buffer, g_screen.width, kMargin, top);
+
+    const Rect greeting = RenderText(font, kGreeting, kBakedSize, kTextColor, kMargin + labelBox.right() + 2 * kMargin, top, timer);
+    return std::max(top + labelBox.bottom(), greeting.bottom());
+}
+#endif
+
+//-------------------------------------
 static void
 RenderStatusBar(MindShake::Font &font, double drawMicroseconds, float fps) {
     const int32_t top = int32_t(g_screen.height) - GetStatusHeight();
@@ -191,9 +292,14 @@ RenderStatusBar(MindShake::Font &font, double drawMicroseconds, float fps) {
              onOff(gShowBoundingBox), onOff(g_screen.show_clipping), onOff(gShowTexture));
     font.DrawText(line, 13, kStatusColor, g_screen.buffer, g_screen.width, kMargin, top + 6);
 
-    // One number key for each backend, as in "1, 2, 3".
-    const int keysLength = int(gBackends.size()) * 3 - 2;
-    snprintf(line, sizeof(line), u8"Tab: clip corner · Arrows: move clip · %.*s: atlas font · Esc: exit", keysLength, "1, 2, 3");
+    // One number key for each atlas, as in "1, 2, 3".
+#if defined(FONTRENDERER_USE_BAKED)
+    const char *bakeKey = u8" · S: bake atlas font";
+#else
+    const char *bakeKey = "";
+#endif
+    const int keysLength = int(GetAtlasCount()) * 3 - 2;
+    snprintf(line, sizeof(line), u8"Tab: clip corner · Arrows: move clip · %.*s: atlas font%s · Esc: exit", keysLength, "1, 2, 3, 4", bakeKey);
     font.DrawText(line, 13, kStatusColor, g_screen.buffer, g_screen.width, kMargin, top + 24);
 
     Rect box {};
@@ -228,10 +334,18 @@ Keyboard(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool isPressed
         case MFB_KB_KEY_1:
         case MFB_KB_KEY_2:
         case MFB_KB_KEY_3:
-            if(size_t(key - MFB_KB_KEY_1) < gBackends.size()) {
+        case MFB_KB_KEY_4:
+            if(size_t(key - MFB_KB_KEY_1) < GetAtlasCount()) {
                 gShowTextureId = size_t(key - MFB_KB_KEY_1);
             }
             break;
+
+#if defined(FONTRENDERER_USE_BAKED)
+        case MFB_KB_KEY_S:
+            // With the baked atlas shown, its backend is saved again.
+            BakeFont((gShowTextureId < gBackends.size()) ? gShowTextureId : gBaked.source);
+            break;
+#endif
 
         case MFB_KB_KEY_A:
             for(Backend &backend : gBackends) {
@@ -350,10 +464,14 @@ main(int argc, char *argv[]) {
             timedFrames      = 0;
         }
 
+#if defined(FONTRENDERER_USE_BAKED)
+        if (gBaked.font != nullptr) {
+            bottom = RenderBakedRow(bottom + kMargin, timer);
+        }
+#endif
+
         if (gShowTexture) {
-            Backend &backend = gBackends[gShowTextureId];
-            backend.font->SetClipping(g_screen.clip_left, g_screen.clip_top, g_screen.clip_right, g_screen.clip_bottom);
-            RenderAtlas(*backend.font, backend.name, bottom + kMargin);
+            RenderShownAtlas(bottom + kMargin);
         }
         example_draw_clipping();
 
@@ -367,6 +485,9 @@ main(int argc, char *argv[]) {
     } while(mfb_wait_sync(window));
 
     example_release();
+#if defined(FONTRENDERER_USE_BAKED)
+    gBaked.font.reset();
+#endif
     gBackends.clear();
     mfb_timer_destroy(timer);
 

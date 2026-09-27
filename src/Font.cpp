@@ -6,6 +6,7 @@
 //-----------------------------------------------------------------------------
 
 #include "Font.h"
+#include "Tga.h"
 #include "UTF8_Utils.h"
 //-------------------------------------
 #include <algorithm>
@@ -14,21 +15,17 @@
 #include <math.h>      // ::lround, as DJGPP has no std::lround
 #include <cstring>
 #include <new>
+#include <unordered_set>
 
 using namespace MindShake;
 
 // C++14 needs these definitions whenever the constants are bound to a reference.
-constexpr uint32_t Font::kMaxTextureSize;
-constexpr int32_t  Font::kMaxAntialiasWeight;
+constexpr int32_t Font::kMaxAntialiasWeight;
 
 //-------------------------------------
-Font::Font(const char *fontName) {
-    mFontName = fontName;
-
+Font::Font(const char *fontName) : FontBase(fontName) {
     // Trash data
-    mHeightData[0]          = {};
-    mCodePointData[0]       = {};
-    mCodePointHeightData[0] = {};
+    mCodePointData[0] = {};
 }
 
 //-------------------------------------
@@ -40,6 +37,7 @@ Font::Reset() {
     mCodePointHeightData[0] = {};
 
     std::fill(mTexture.begin(), mTexture.end(), uint8_t(0));
+    ++mTextureVersion;
 }
 
 //-------------------------------------
@@ -60,37 +58,32 @@ Font::SetSizeMode(ESizeMode mode) {
 //-------------------------------------
 bool
 Font::LoadFile(const char *fileName) {
-    switch(mFontFile.Open(fileName)) {
-        case MappedFile::EError::None:
-            return true;
-
-        case MappedFile::EError::CannotOpen:
-            mStatus = EStatus::CannotOpenFile;
-            return false;
-
-        case MappedFile::EError::CannotRead:
-            mStatus = EStatus::CannotReadFile;
-            return false;
-
-        case MappedFile::EError::OutOfMemory:
-            mStatus = EStatus::OutOfMemory;
-            return false;
+    const EStatus status = GetFileStatus(mFontFile.Open(fileName));
+    if(status != EStatus::Ok) {
+        mStatus = status;
+        return false;
     }
 
-    return false;
+    return true;
 }
 
 //-------------------------------------
 bool
 Font::InitPacker() {
-    mPacker.Init(512 - mGlyphPadding, 128 - mGlyphPadding, true);
+    constexpr uint32_t kWidth  = 512;
+    constexpr uint32_t kHeight = 128;
+
+    mPacker.Init(kWidth - mGlyphPadding, kHeight - mGlyphPadding, true);
     try {
-        mTexture.assign(size_t(GetTextureWidth()) * GetTextureHeight(), 0);
+        mTexture.assign(size_t(kWidth) * kHeight, 0);
     }
     catch(const std::bad_alloc &) {
         mStatus = EStatus::OutOfMemory;
         return false;
     }
+
+    mTextureWidth  = kWidth;
+    mTextureHeight = kHeight;
 
     return true;
 }
@@ -158,17 +151,27 @@ Font::SetGlyphPadding(uint32_t padding) {
         return true;
     }
 
-    const uint32_t textureWidth  = GetTextureWidth();
-    const uint32_t textureHeight = GetTextureHeight();
-    if(padding >= textureWidth || padding >= textureHeight) {
+    if(padding >= mTextureWidth || padding >= mTextureHeight) {
         return false;
     }
 
     mGlyphPadding = padding;
-    mPacker.Init(textureWidth - padding, textureHeight - padding, true);
+    mPacker.Init(mTextureWidth - padding, mTextureHeight - padding, true);
     Reset();
 
     return true;
+}
+
+//-------------------------------------
+bool
+Font::CanEverFit(uint32_t paddedWidth, uint32_t paddedHeight) const {
+    const bool canGrowWidth  = mTextureGrowth != ETextureGrowth::Height;
+    const bool canGrowHeight = mTextureGrowth != ETextureGrowth::Width;
+    auto fits = [&](uint32_t w, uint32_t h) {
+        return (canGrowWidth || w <= mPacker.GetWidth()) && (canGrowHeight || h <= mPacker.GetHeight());
+    };
+
+    return fits(paddedWidth, paddedHeight) || fits(paddedHeight, paddedWidth);
 }
 
 //-------------------------------------
@@ -178,19 +181,13 @@ Font::PackGlyph(const uint8_t *pixels, uint32_t width, uint32_t height, CodePoin
     data.rotated = false;
 
     // Fail early instead of growing the texture up to the limit for nothing.
-    const bool canGrowWidth  = mTextureGrowth != ETextureGrowth::Height;
-    const bool canGrowHeight = mTextureGrowth != ETextureGrowth::Width;
-    auto canEverFit = [&](uint32_t w, uint32_t h) {
-        return (canGrowWidth || w <= mPacker.GetWidth()) && (canGrowHeight || h <= mPacker.GetHeight());
-    };
     const uint32_t paddedWidth  = width  + mGlyphPadding;
     const uint32_t paddedHeight = height + mGlyphPadding;
-    if(canEverFit(paddedWidth, paddedHeight) == false && canEverFit(paddedHeight, paddedWidth) == false) {
+    if(CanEverFit(paddedWidth, paddedHeight) == false) {
         return false;
     }
 
-    Rect &rect = data.rect;
-    rect = mPacker.Insert(paddedWidth, paddedHeight, mPackingHeuristic);
+    Rect rect = mPacker.Insert(paddedWidth, paddedHeight, mPackingHeuristic);
     while(rect.width <= 0) {
         if(GrowTexture() == false) {
             return false;
@@ -198,7 +195,18 @@ Font::PackGlyph(const uint8_t *pixels, uint32_t width, uint32_t height, CodePoin
 
         rect = mPacker.Insert(paddedWidth, paddedHeight, mPackingHeuristic);
     }
-    data.rotated = uint32_t(rect.width) != paddedWidth;
+
+    CopyGlyph(pixels, width, height, rect, data);
+
+    return true;
+}
+
+//-------------------------------------
+void
+Font::CopyGlyph(const uint8_t *pixels, uint32_t width, uint32_t height, const Rect &packed, CodePointHeightData &data) {
+    Rect &rect = data.rect;
+    rect         = packed;
+    data.rotated = uint32_t(rect.width) != width + mGlyphPadding;
 
     // The padding reserved at the right and bottom of the glyph stays empty. Shifting by the padding moves
     // the glyph past the empty band along the top and left texture edges, so it has empty pixels on every side.
@@ -207,7 +215,7 @@ Font::PackGlyph(const uint8_t *pixels, uint32_t width, uint32_t height, CodePoin
     rect.width  -= int32_t(mGlyphPadding);
     rect.height -= int32_t(mGlyphPadding);
 
-    const size_t textureWidth = GetTextureWidth();
+    const size_t textureWidth = mTextureWidth;
     const size_t stepX        = data.rotated ? textureWidth : 1;
     const size_t stepY        = data.rotated ? 1 : textureWidth;
     uint8_t      *row         = &mTexture[size_t(rect.y) * textureWidth + size_t(rect.x)];
@@ -217,14 +225,14 @@ Font::PackGlyph(const uint8_t *pixels, uint32_t width, uint32_t height, CodePoin
             *dst = *pixels++;
     }
 
-    return true;
+    ++mTextureVersion;
 }
 
 //-------------------------------------
 bool
 Font::GrowTexture() {
-    const uint32_t oldWidth  = GetTextureWidth();
-    const uint32_t oldHeight = GetTextureHeight();
+    const uint32_t oldWidth  = mTextureWidth;
+    const uint32_t oldHeight = mTextureHeight;
     const uint32_t newWidth  = (mTextureGrowth != ETextureGrowth::Height) ? oldWidth  * 2 : oldWidth;
     const uint32_t newHeight = (mTextureGrowth != ETextureGrowth::Width)  ? oldHeight * 2 : oldHeight;
     if(newWidth > kMaxTextureSize || newHeight > kMaxTextureSize) {
@@ -248,6 +256,10 @@ Font::GrowTexture() {
         return false;
     }
 
+    mTextureWidth  = newWidth;
+    mTextureHeight = newHeight;
+    ++mTextureVersion;
+
     // Cannot fail: the new size is bigger and within kMaxTextureSize.
     const bool resized = mPacker.ResizeBin(newWidth - mGlyphPadding, newHeight - mGlyphPadding);
     assert(resized);
@@ -257,30 +269,25 @@ Font::GrowTexture() {
 }
 
 //-------------------------------------
-float
-Font::GetScaledKerning(int glyph, uint32_t nextCodePoint, float scale) {
-    if(nextCodePoint == 0) {
-        return 0.0f;
+int
+Font::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
+    const uint64_t key = GetKerningKey(leftGlyph, rightGlyph);
+
+    auto it = mKerningData.find(key);
+    if (it == mKerningData.end()) {
+        it = mKerningData.insert({ key, LookUpKerning(leftGlyph, rightGlyph) }).first;
     }
 
-    return float(GetKerning(uint32_t(glyph), GetCodePointGlyph(nextCodePoint))) * scale;
+    return it->second;
 }
 
 //-------------------------------------
 int
-Font::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
-    const uint64_t key = (uint64_t(leftGlyph) << 32) | uint64_t(rightGlyph);
-
-    auto it = mKerningData.find(key);
-    if (it == mKerningData.end()) {
-        // GPOS wins over the 'kern' table when it has kerning, as in HarfBuzz. FreeType prefers 'kern', but fonts keep it
-        // for old software, and it often has only part of the pairs, because it cannot store classes of glyphs.
-        // stb_truetype also prefers GPOS, but whenever the font has the table, even without kerning in it.
-        const int kerning = mGposKerning.HasKerning() ? mGposKerning.GetKerning(leftGlyph, rightGlyph) : GetKernTableKerning(leftGlyph, rightGlyph);
-        it = mKerningData.insert({ key, kerning }).first;
-    }
-
-    return it->second;
+Font::LookUpKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
+    // GPOS wins over the 'kern' table when it has kerning, as in HarfBuzz. FreeType prefers 'kern', but fonts keep it
+    // for old software, and it often has only part of the pairs, because it cannot store classes of glyphs.
+    // stb_truetype also prefers GPOS, but whenever the font has the table, even without kerning in it.
+    return mGposKerning.HasKerning() ? mGposKerning.GetKerning(leftGlyph, rightGlyph) : GetKernTableKerning(leftGlyph, rightGlyph);
 }
 
 //-------------------------------------
@@ -304,157 +311,6 @@ Font::ApplyAntialias(std::unique_ptr<uint8_t[]> &pixels, int &width, int &height
     AABlock(pixels.get(), uint32_t(width), uint32_t(height), dst.get(), uint32_t(width));
     pixels = std::move(dst);
     return 0;
-}
-
-//-------------------------------------
-void
-Font::DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_t *dst, uint32_t dstStride, int32_t posX, int32_t posY) {
-    if(utf8 == nullptr || textHeight == 0) {
-        return;
-    }
-
-    uint32_t offsetDst, offsetTexture;
-    float    offsetTextX;
-    int32_t  offsetTextY;
-    int32_t  currentX, currentY;
-    int32_t  minX, maxX, minY, maxY;
-
-    Color32 fontColor = *reinterpret_cast<Color32 *>(&color);
-
-    const HeightData &heightData = GetDataForHeight(textHeight);
-
-    posY += heightData.ascent; // baseline
-
-    offsetTextX = 0.0f;
-    offsetTextY = 0;
-    const uint8_t *text = reinterpret_cast<const uint8_t *>(utf8);
-    for(uint32_t codePoint = GetNextUTF32(&text), nextCodePoint; codePoint != 0; codePoint = nextCodePoint) {
-        nextCodePoint = GetNextUTF32(&text);
-        if(codePoint == '\n') {
-            offsetTextX = 0.0f;
-            offsetTextY += heightData.GetLineAdvance();
-            continue;
-        }
-
-        const CodePointHeightData &data = GetCodePointDataForHeight(codePoint, textHeight);
-        if(data.glyph > 0) {
-            // Clip Top
-            currentY = posY + data.y + offsetTextY;
-            minY = 0;
-            if(currentY < mTop) {
-                minY    += mTop - currentY;
-                currentY = mTop;
-            }
-
-            // Clip Bottom (if the beginning is beyond the bottom limit)
-            if(currentY < mBottom) {
-                // Clip Left
-                currentX = posX + data.x + int32_t(::lround(offsetTextX));
-                minX = 0;
-                if(currentX < mLeft) {
-                    minX    += mLeft - currentX;
-                    currentX = mLeft;
-                }
-
-                // Clip Right (if the beginning is beyond the right limit)
-                if(currentX < mRight) {
-                    // Clip Right
-                    maxX = data.GetWidth();
-                    if(currentX + maxX - minX >= mRight) {
-                        maxX = minX + mRight - currentX;
-                    }
-
-                    // Clip Bottom
-                    maxY = data.GetHeight();
-                    if(currentY + maxY - minY >= mBottom) {
-                        maxY = minY + mBottom - currentY;
-                    }
-
-                    // Let's draw
-                    const uint32_t textureWidth = GetTextureWidth();
-                    const uint32_t stepX        = data.rotated ? textureWidth : 1;
-                    const uint32_t stepY        = data.rotated ? 1 : textureWidth;
-                    offsetTexture = data.rect.y * textureWidth + data.rect.x + minY * stepY + minX * stepX;
-                    offsetDst     = currentY * dstStride + currentX;
-                    for(int glyphY=minY; glyphY<maxY; ++glyphY) {
-                        uint32_t texel = offsetTexture;
-                        for(int glyphX=minX, dstX=0; glyphX<maxX; ++glyphX, ++dstX, texel += stepX) {
-                            if(mTexture[texel] != 0) {
-                                uint32_t grey    = uint32_t((mTexture[texel] * fontColor.a) / 255);
-                                uint32_t invGrey = 255 - grey;
-
-                                Color32  &dstColor = *reinterpret_cast<Color32 *>(&dst[offsetDst + dstX]);
-                                dstColor.b = ((fontColor.b * grey) + (dstColor.b * invGrey)) / 255;
-                                dstColor.g = ((fontColor.g * grey) + (dstColor.g * invGrey)) / 255;
-                                dstColor.r = ((fontColor.r * grey) + (dstColor.r * invGrey)) / 255;
-                                dstColor.a = 255;
-                            }
-                        }
-                        offsetTexture += stepY;
-                        offsetDst     += dstStride;
-                    }
-                }
-            }
-            offsetTextX += data.advanceWidth + GetScaledKerning(data.glyph, nextCodePoint, heightData.scale);
-        }
-    }
-}
-
-//-------------------------------------
-void
-Font::GetTextBox(const char *utf8, uint8_t textHeight, Rect *pRect) {
-    if(pRect == nullptr) {
-        return;
-    }
-
-    *pRect = {};
-    if(utf8 == nullptr || textHeight == 0) {
-        return;
-    }
-
-    const HeightData &heightData = GetDataForHeight(textHeight);
-
-    int32_t minX = INT32_MAX, maxX = INT32_MIN;
-    int32_t minY = INT32_MAX, maxY = INT32_MIN;
-    float   offsetTextX = 0.0f;
-    int32_t offsetTextY = 0;
-
-    const uint8_t *text = reinterpret_cast<const uint8_t *>(utf8);
-    for(uint32_t codePoint = GetNextUTF32(&text), nextCodePoint; codePoint != 0; codePoint = nextCodePoint) {
-        nextCodePoint = GetNextUTF32(&text);
-        if(codePoint == '\n') {
-            offsetTextX = 0.0f;
-            offsetTextY += heightData.GetLineAdvance();
-            continue;
-        }
-
-        const CodePointHeightData &data = GetCodePointDataForHeight(codePoint, textHeight);
-        if(data.glyph > 0) {
-            const int32_t penX = int32_t(::lround(offsetTextX));
-            if(data.GetWidth() > 0) {
-                const int32_t left = penX + data.x;
-                const int32_t top  = heightData.ascent + data.y + offsetTextY;
-
-                minX = std::min(minX, left);
-                maxX = std::max(maxX, left + data.GetWidth());
-                minY = std::min(minY, top);
-                maxY = std::max(maxY, top + data.GetHeight());
-            }
-            else {
-                minX = std::min(minX, penX);
-            }
-            // The advance counts too, so trailing spaces widen the box.
-            maxX = std::max(maxX, int32_t(::lround(offsetTextX + data.advanceWidth)));
-
-            offsetTextX += data.advanceWidth + GetScaledKerning(data.glyph, nextCodePoint, heightData.scale);
-        }
-    }
-
-    if(minX > maxX || minY > maxY) {
-        return;
-    }
-
-    *pRect = { minX, minY, maxX - minX, maxY - minY };
 }
 
 // TODO: Think where put these funcs...
@@ -616,4 +472,190 @@ Font::GetDataForHeight(uint8_t height) {
     }
 
     return hd->second;
+}
+
+//-------------------------------------
+const CodePointHeightData &
+Font::GetCodePointDataForHeight(uint32_t codePoint, uint8_t height) {
+    if(mStatus != EStatus::Ok) {
+        return mCodePointHeightData[0];
+    }
+
+    const uint32_t key = GetCodePointHeightKey(codePoint, height);
+
+    auto cphd = mCodePointHeightData.find(key);
+    if(cphd == mCodePointHeightData.end()) {
+        CodePointHeightData data;
+        GlyphBitmap         bitmap;
+        if(RenderGlyph(codePoint, height, data, bitmap) == false) {
+            return mCodePointHeightData[0];
+        }
+
+        if(bitmap.pixels != nullptr) {
+            PackGlyph(bitmap.pixels.get(), uint32_t(bitmap.width), uint32_t(bitmap.height), data);
+        }
+
+        cphd = mCodePointHeightData.insert({key, data}).first;
+    }
+
+    return cphd->second;
+}
+
+//-------------------------------------
+bool
+Font::RenderGlyph(uint32_t codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) {
+    const CodePointData &codePointData = GetCodePointData(codePoint);
+    if(codePointData.glyph == 0) {
+        return false;
+    }
+
+    if(RasterizeGlyph(codePointData, height, data, bitmap) == false) {
+        return false;
+    }
+
+    data.glyph = codePointData.glyph;
+    if(bitmap.pixels != nullptr) {
+        const int grown = ApplyAntialias(bitmap.pixels, bitmap.width, bitmap.height);
+        data.x -= grown;
+        data.y -= grown;
+    }
+
+    return true;
+}
+
+//-------------------------------------
+bool
+Font::Preload(const char *utf8, uint8_t textHeight) {
+    if(mStatus != EStatus::Ok) {
+        return false;
+    }
+
+    if(utf8 == nullptr || textHeight == 0) {
+        return true;
+    }
+
+    struct Pending {
+        uint32_t            key;
+        CodePointHeightData data;
+        GlyphBitmap         bitmap;
+    };
+
+    std::vector<Pending>         pending;
+    std::unordered_set<uint32_t> seen;
+    const uint8_t *text = reinterpret_cast<const uint8_t *>(utf8);
+    for(uint32_t codePoint = GetNextUTF32(&text); codePoint != 0; codePoint = GetNextUTF32(&text)) {
+        const uint32_t key = GetCodePointHeightKey(codePoint, textHeight);
+        if(codePoint == '\n' || mCodePointHeightData.count(key) != 0 || seen.insert(key).second == false) {
+            continue;
+        }
+
+        Pending glyph {};
+        glyph.key = key;
+        if(RenderGlyph(codePoint, textHeight, glyph.data, glyph.bitmap) == false) {
+            continue;
+        }
+
+        if(glyph.bitmap.pixels == nullptr) {
+            mCodePointHeightData.insert({ key, glyph.data });
+        }
+        else {
+            pending.push_back(std::move(glyph));
+        }
+    }
+
+    bool                              allFit = true;
+    std::vector<SkylineBinPack::Size> sizes;
+    std::vector<Pending *>            packing;
+    for(Pending &glyph : pending) {
+        const SkylineBinPack::Size size { uint32_t(glyph.bitmap.width) + mGlyphPadding, uint32_t(glyph.bitmap.height) + mGlyphPadding };
+        if(CanEverFit(size.width, size.height)) {
+            sizes.push_back(size);
+            packing.push_back(&glyph);
+        }
+        else {
+            allFit = false;
+        }
+    }
+
+    std::vector<Rect> rects;
+    while(sizes.empty() == false) {
+        mPacker.Insert(sizes, rects, mPackingHeuristic);
+
+        std::vector<SkylineBinPack::Size> unplacedSizes;
+        std::vector<Pending *>            unplaced;
+        for(size_t i = 0; i < sizes.size(); ++i) {
+            Pending &glyph = *packing[i];
+            if(rects[i].width > 0) {
+                CopyGlyph(glyph.bitmap.pixels.get(), uint32_t(glyph.bitmap.width), uint32_t(glyph.bitmap.height), rects[i], glyph.data);
+            }
+            else {
+                unplacedSizes.push_back(sizes[i]);
+                unplaced.push_back(&glyph);
+            }
+        }
+        sizes.swap(unplacedSizes);
+        packing.swap(unplaced);
+
+        if(sizes.empty() == false && GrowTexture() == false) {
+            allFit = false;
+            break;
+        }
+    }
+
+    for(const Pending &glyph : pending) {
+        mCodePointHeightData.insert({ glyph.key, glyph.data });
+    }
+
+    return allFit;
+}
+
+//-------------------------------------
+void
+Font::LoadAllKerningPairs() {
+    if(mStatus != EStatus::Ok) {
+        return;
+    }
+
+    std::unordered_set<uint32_t> glyphs;
+    for(const auto &entry : mCodePointHeightData) {
+        if(entry.second.glyph > 0) {
+            glyphs.insert(uint32_t(entry.second.glyph));
+        }
+    }
+
+    // Pairs without kerning are not cached: n * n entries would take too much memory.
+    for(uint32_t left : glyphs) {
+        for(uint32_t right : glyphs) {
+            const uint64_t key = GetKerningKey(left, right);
+            if(mKerningData.count(key) != 0) {
+                continue;
+            }
+
+            const int kerning = LookUpKerning(left, right);
+            if(kerning != 0) {
+                mKerningData.insert({ key, kerning });
+            }
+        }
+    }
+}
+
+//-------------------------------------
+Font::EStatus
+Font::SaveBaked(const char *metricsFile, const char *textureFile) const {
+    if(mStatus != EStatus::Ok) {
+        return mStatus;
+    }
+
+    if(metricsFile == nullptr || textureFile == nullptr) {
+        return EStatus::CannotWriteFile;
+    }
+
+    // A TGA image cannot be empty, and the texture is when no glyph has pixels.
+    const uint32_t width  = std::max<uint32_t>(GetUsedTextureWidth(), 1);
+    const uint32_t height = std::max<uint32_t>(GetUsedTextureHeight(), 1);
+    if(WriteTga(textureFile, mTexture.data(), width, height, mTextureWidth, true) == false) {
+        return EStatus::CannotWriteFile;
+    }
+
+    return SaveMetrics(metricsFile, width, height);
 }

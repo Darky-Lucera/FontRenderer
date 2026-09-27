@@ -20,6 +20,9 @@ namespace MindShake { namespace Test {
     constexpr const char *kFontPath       = FONT_RENDERER_TEST_RESOURCES "Roboto-Regular.ttf";
     // Its stored bounding boxes do not always start at the left side bearing, and do not always contain the whole outline.
     constexpr const char *kItalicFontPath = FONT_RENDERER_TEST_RESOURCES "DejaVuSerifCondensed-BoldItalic.ttf";
+    // Where the tests write files. The names fit in 8.3 for DOS.
+    constexpr const char *kMetricsPath    = FONT_RENDERER_TEST_OUTPUT "baked.frb";
+    constexpr const char *kTexturePath    = FONT_RENDERER_TEST_OUTPUT "baked.tga";
 
     // Exposes the protected internals the tests need to inspect.
     //---------------------------------
@@ -32,10 +35,12 @@ namespace MindShake { namespace Test {
             using TFont::GetCodePointGlyph;
             using TFont::GetDataForHeight;
             using TFont::GetKerning;
+            using TFont::LookUpKerning;
             using TFont::PackGlyph;
             using TFont::mAscent;
             using TFont::mCodePointHeightData;
             using TFont::mDescent;
+            using TFont::mKerningData;
             using TFont::mUnitsPerEm;
 
             // Entry 0 is the placeholder returned for missing glyphs.

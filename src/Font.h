@@ -7,6 +7,7 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
+#include "FontBase.h"
 #include "GposKerning.h"
 #include "MappedFile.h"
 #include "SkylineBinPack.h"
@@ -14,21 +15,9 @@
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
-#include <string>
-#include <vector>
 
 //-------------------------------------
 namespace MindShake {
-
-    //---------------------------------
-    struct HeightData {
-        float   scale;
-        int     ascent;
-        int     descent;
-        int     lineGap;
-
-        int     GetLineAdvance() const  { return ascent - descent + lineGap; }
-    };
 
     //---------------------------------
     struct CodePointData {
@@ -37,53 +26,21 @@ namespace MindShake {
         int     leftSideBearing;
     };
 
-    //---------------------------------
-    struct CodePointHeightData {
-        using Rect = MindShake::SkylineBinPack::Rect;
-
-        int     glyph;             // It's convenient
-        float   advanceWidth;       // Kept fractional so the pen position does not accumulate rounding errors
-        int     leftSideBearing;
-        int     x, y;
-        Rect    rect;               // Area in the texture; a rotated glyph is stored transposed, so its width and height are swapped.
-                                    // Empty for glyphs without pixels, like the space, and for glyphs that did not fit in the texture.
-        bool    rotated {};
-
-        int32_t GetWidth() const    { return rotated ? rect.height : rect.width;  }
-        int32_t GetHeight() const   { return rotated ? rect.width  : rect.height; }
-    };
-
+    // A font that renders its glyphs from a font file the first time they are drawn.
     //-------------------------------------
-    union Color32 {
-        union {
-            uint32_t    color;
-            struct {
-                uint8_t b, g, r, a;
-            };
-        };
-    };
-
-    //-------------------------------------
-    union CodePointHeight {
-        uint32_t     value;
-        struct {
-            uint32_t codePoint : 24;
-            uint32_t height    :  8;
-        };
-    };
-
-
-    //-------------------------------------
-    class Font {
+    class Font : public FontBase {
         protected:
-            using MapHeightData          = std::unordered_map<uint32_t, HeightData>;
             using MapCodePointData       = std::unordered_map<int32_t, CodePointData>;
-            using MapCodePointHeightData = std::unordered_map<uint32_t, CodePointHeightData>;
-            using MapKerning             = std::unordered_map<uint64_t, int32_t>;
             using SkylineBinPack         = MindShake::SkylineBinPack;
 
+            //-------------------------
+            struct GlyphBitmap {
+                std::unique_ptr<uint8_t[]>  pixels;
+                int                         width  {};
+                int                         height {};
+            };
+
         public:
-            using Rect                   = SkylineBinPack::Rect;
             using ELevelChoiceHeuristic  = SkylineBinPack::ELevelChoiceHeuristic;
 
             // Which dimensions of the texture are doubled when a glyph does not fit.
@@ -100,39 +57,16 @@ namespace MindShake {
                 EmSize          // Typographic size, as in CSS font-size; the real line height depends on the font
             };
 
-            //-------------------------
-            enum class EStatus : int8_t {
-                Ok,
-                NotLoaded,          // The constructor did not finish loading the font
-                CannotOpenFile,
-                CannotReadFile,
-                InvalidFont,
-                OutOfMemory
-            };
-
-            // Most GPUs cannot allocate bigger textures.
-            static constexpr uint32_t   kMaxTextureSize = 16384;
             // Bigger weights could overflow the sums of the antialias filter.
             static constexpr int32_t    kMaxAntialiasWeight = 0xffff;
 
         public:
             explicit                    Font(const char *fontName);
-            virtual                     ~Font() = default;
 
-                                        Font(const Font &)                  = delete;
-            Font &                      operator=(const Font &)             = delete;
-
-            EStatus                     GetStatus() const                   { return mStatus;                           }
             void                        Reset();                            // Remove all rendered glyphs and associated data!
 
-            const std::string &         GetFontName() const                 { return mFontName;                         }
-            const uint8_t *             GetTexture() const                  { return mTexture.data();                   }
-            // The packer only covers the texture minus a band of glyph padding along its top and left edges.
-            uint32_t                    GetTextureWidth() const             { return mPacker.GetWidth()  + mGlyphPadding; }
-            uint32_t                    GetTextureHeight() const            { return mPacker.GetHeight() + mGlyphPadding; }
-            // Size of the top-left area of the texture that holds glyphs, to save a cropped atlas. 0 if it is empty.
-            uint32_t                    GetUsedTextureWidth() const;
-            uint32_t                    GetUsedTextureHeight() const;
+            uint32_t                    GetUsedTextureWidth() const override;
+            uint32_t                    GetUsedTextureHeight() const override;
             // Glyphs that already failed to fit stay empty until Reset.
             void                        SetTextureGrowth(ETextureGrowth growth) { mTextureGrowth = growth;              }
             ETextureGrowth              GetTextureGrowth() const            { return mTextureGrowth;                    }
@@ -148,14 +82,6 @@ namespace MindShake {
             void                        SetPackingHeuristic(ELevelChoiceHeuristic heuristic) { mPackingHeuristic = heuristic; }
             ELevelChoiceHeuristic       GetPackingHeuristic() const         { return mPackingHeuristic;                 }
 
-            // DrawText does not know the size of dst: without SetClipping the text has to fit inside it.
-            void                        DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_t *dst, uint32_t dstStride, int32_t posX, int32_t posY);
-            // Box covering every glyph DrawText would draw, relative to the position passed to it.
-            // A text with nothing to draw, like an empty one, gives an empty box.
-            void                        GetTextBox(const char *utf8, uint8_t textHeight, Rect *pRect);
-
-            void                        SetClipping(int32_t left, int32_t top, int32_t right, int32_t bottom)   { mLeft = left; mRight = right; mTop = top; mBottom = bottom; }
-
             // Changing any antialias setting discards every rendered glyph, like Reset.
             void                        SetAntialias(bool set);
             bool                        GetAntialias() const                { return mUseAntialias;                     }
@@ -167,56 +93,64 @@ namespace MindShake {
             int32_t                     GetAntialiasBorder() const          { return mAABorder;                         }
             int32_t                     GetAntialiasCorner() const          { return mAACorner;                         }
 
+            // Renders every code point of the text at that height before it is drawn. Packing them all together
+            // fills the texture better than packing them one by one. Returns false if any glyph did not fit in the texture.
+            bool                        Preload(const char *utf8, uint8_t textHeight);
+            // Looks up the kerning of every pair of glyphs rendered so far, at any height, so that SaveBaked saves it.
+            // It can be very slow: for n glyphs it looks up n * n pairs.
+            void                        LoadAllKerningPairs();
+            // Saves what FontBaked needs to draw the glyphs rendered so far: their metrics and kerning in metricsFile,
+            // and the used area of the texture in textureFile, as an 8-bit grayscale TGA compressed with RLE.
+            // Only the kerning pairs already looked up are saved. Call LoadAllKerningPairs first to save all of them.
+            EStatus                     SaveBaked(const char *metricsFile, const char *textureFile) const;
+
         protected:
             // On failure it sets the status and returns false.
             bool                        LoadFile(const char *fileName);
             bool                        InitPacker();
             // Copies the glyph into the texture, growing it if needed. Returns false, leaving data.rect empty, if it does not fit.
             bool                        PackGlyph(const uint8_t *pixels, uint32_t width, uint32_t height, CodePointHeightData &data);
+            bool                        CanEverFit(uint32_t paddedWidth, uint32_t paddedHeight) const;
+            void                        CopyGlyph(const uint8_t *pixels, uint32_t width, uint32_t height, const Rect &packed, CodePointHeightData &data);
             bool                        GrowTexture();
+            // Returns false if the font has no glyph for the code point, or the backend cannot render it.
+            bool                        RenderGlyph(uint32_t codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap);
             float                       GetScaleForHeight(uint8_t height)   { return GetDataForHeight(height).scale;    }
-            uint32_t                    GetCodePointGlyph(uint32_t index)   { return GetCodePointData(index).glyph;     }
-            float                       GetScaledKerning(int glyph, uint32_t nextCodePoint, float scale);
-            // In font units.
-            int                         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph);
+            // Without the cache of mKerningData.
+            int                         LookUpKerning(uint32_t leftGlyph, uint32_t rightGlyph);
             // Returns how many pixels the glyph grew on each side.
             int                         ApplyAntialias(std::unique_ptr<uint8_t[]> &pixels, int &width, int &height);
             void                        AABlock(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
             void                        AABlockEx(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
-            const HeightData &          GetDataForHeight(uint8_t height);
+
+            const HeightData &          GetDataForHeight(uint8_t height) override;
+            const CodePointHeightData & GetCodePointDataForHeight(uint32_t codePoint, uint8_t height) override;
+            uint32_t                    GetCodePointGlyph(uint32_t codePoint) override { return GetCodePointData(codePoint).glyph; }
+            int                         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
 
         protected:
             // Only used when GposKerning has nothing to read.
             virtual int                         GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) = 0;
 
             virtual const CodePointData &       GetCodePointData(uint32_t index) = 0;
-            virtual const CodePointHeightData & GetCodePointDataForHeight(uint32_t index, uint8_t height) = 0;
+            // Fills the position and the advance of data, and the coverage of the glyph in bitmap,
+            // which stays empty for a glyph without pixels. Returns false if it cannot render the glyph.
+            virtual bool                        RasterizeGlyph(const CodePointData &codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) = 0;
 
         protected:
-            std::string            mFontName;
             MappedFile             mFontFile;       // The backends point into it. As a base class member, it is destroyed after their members
             SkylineBinPack         mPacker;
-            std::vector<uint8_t>   mTexture;
             int                    mAscent  {};
             int                    mDescent {};
             int                    mLineGap {};
             int                    mUnitsPerEm {};
-            MapHeightData          mHeightData;
             MapCodePointData       mCodePointData;
-            MapCodePointHeightData mCodePointHeightData;
             GposKerning            mGposKerning;    // Points into mFontFile
-            MapKerning             mKerningData;
-
-            int32_t                mLeft   { -0xffff };
-            int32_t                mTop    { -0xffff };
-            int32_t                mRight  {  0xffff };
-            int32_t                mBottom {  0xffff };
 
             ETextureGrowth         mTextureGrowth { ETextureGrowth::Height };
             ESizeMode              mSizeMode { ESizeMode::LineHeight };
             uint32_t               mGlyphPadding { 1 };
             ELevelChoiceHeuristic  mPackingHeuristic { ELevelChoiceHeuristic::LevelBottomLeft };
-            EStatus                mStatus { EStatus::NotLoaded };
             int32_t                mAACenter { 20 };
             int32_t                mAABorder {  4 };
             int32_t                mAACorner {  1 };

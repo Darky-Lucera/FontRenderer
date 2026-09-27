@@ -8,6 +8,7 @@
 //-----------------------------------------------------------------------------
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -28,7 +29,9 @@ enum {
     FR_STATUS_OUT_OF_MEMORY,
     FR_STATUS_INVALID_ARGUMENT,
     FR_STATUS_INVALID_BACKEND,
-    FR_STATUS_INTERNAL_ERROR
+    FR_STATUS_INTERNAL_ERROR,
+    FR_STATUS_CANNOT_WRITE_FILE,
+    FR_STATUS_TEXTURE_FULL          // Some glyph did not fit in the texture
 };
 
 //-------------------------------------
@@ -82,6 +85,17 @@ typedef struct fr_rect {
     int32_t height;
 } fr_rect;
 
+//-------------------------------------
+typedef struct fr_glyph_quad {
+    int32_t x;                      // Relative to the position passed to fr_font_draw_text
+    int32_t y;
+    int32_t width;
+    int32_t height;
+    // A rotated glyph is stored transposed: the pixel (x, y) of the quad is the texel (texture_rect.x + y, texture_rect.y + x).
+    fr_rect texture_rect;
+    bool    rotated;
+} fr_glyph_quad;
+
 #define FR_FONT_MAX_TEXTURE_SIZE     UINT32_C(16384)
 #define FR_FONT_MAX_ANTIALIAS_WEIGHT INT32_C(65535)
 
@@ -91,10 +105,29 @@ typedef struct fr_rect {
 // Creates a font using the selected rasterizer. On failure, *out_font is NULL.
 // A backend the library was built without gives FR_STATUS_INVALID_BACKEND.
 fr_status fr_font_create(const char *font_name, fr_font_backend backend, fr_font **out_font);
+// Creates a font from the files fr_font_save_baked writes. It cannot render new glyphs, so the functions
+// that change how glyphs are rendered give FR_STATUS_INVALID_BACKEND, and their getters give 0, false or *_INVALID.
+// A library built without FONTRENDERER_USE_BAKED gives FR_STATUS_INVALID_BACKEND.
+fr_status fr_font_create_baked(const char *metrics_file, const char *texture_file, fr_font **out_font);
+// Takes the texture from memory instead of a TGA file: one byte per texel, in rows of width bytes. It is copied.
+// Without a texture, for one that is only in the GPU, fr_font_draw_text draws nothing.
+fr_status fr_font_create_baked_with_texture(const char *metrics_file, const uint8_t *texture, uint32_t width, uint32_t height,
+                                            fr_font **out_font);
 void      fr_font_destroy(fr_font *font);
 
 // Discards every rendered glyph. Changing the size mode, the glyph padding or any antialias setting does it too.
 fr_status fr_font_reset(fr_font *font);
+
+// Renders every code point of the text at that height before it is drawn. Packing them all together fills
+// the texture better than packing them one by one. Gives FR_STATUS_TEXTURE_FULL if any glyph did not fit.
+fr_status fr_font_preload(fr_font *font, const char *utf8, uint8_t text_height);
+// Looks up the kerning of every pair of glyphs rendered so far, so that fr_font_save_baked saves it.
+// It can be very slow: for n glyphs it looks up n * n pairs.
+fr_status fr_font_load_all_kerning_pairs(fr_font *font);
+// Saves what fr_font_create_baked needs to draw the glyphs rendered so far: their metrics and kerning in metrics_file,
+// and the used area of the texture in texture_file, as an 8-bit grayscale TGA compressed with RLE.
+// Only the kerning pairs already looked up are saved. Call fr_font_load_all_kerning_pairs first to save all of them.
+fr_status fr_font_save_baked(const fr_font *font, const char *metrics_file, const char *texture_file);
 
 // Returned pointers are owned by the font. The texture pointer may be invalidated by
 // any operation that renders a glyph, because the texture can grow.
@@ -105,6 +138,8 @@ uint32_t       fr_font_get_texture_width(const fr_font *font);
 uint32_t       fr_font_get_texture_height(const fr_font *font);
 uint32_t       fr_font_get_used_texture_width(const fr_font *font);
 uint32_t       fr_font_get_used_texture_height(const fr_font *font);
+// Changes whenever the texels change, so that a copy of the texture, like one in the GPU, knows when to update.
+uint32_t       fr_font_get_texture_version(const fr_font *font);
 
 fr_status              fr_font_set_texture_growth(fr_font *font, fr_font_texture_growth growth);
 fr_font_texture_growth fr_font_get_texture_growth(const fr_font *font);
@@ -126,6 +161,12 @@ fr_status fr_font_draw_text(fr_font *font, const char *utf8, uint8_t text_height
                             uint32_t *dst, uint32_t dst_stride, int32_t pos_x, int32_t pos_y);
 // Box of the pixels fr_font_draw_text would draw, relative to its position. On any failure, *rect is all 0.
 fr_status fr_font_get_text_box(fr_font *font, const char *utf8, uint8_t text_height, fr_rect *rect);
+// The glyphs fr_font_draw_text would draw, to draw them in another way, like with the GPU. The clipping does not apply.
+// Writes up to capacity quads, and sets *count to the number of quads of the whole text, so a bigger
+// buffer can be passed again. quads can be NULL when capacity is 0.
+// It can add glyphs to the texture, so check fr_font_get_texture_version afterwards.
+fr_status fr_font_get_glyph_quads(fr_font *font, const char *utf8, uint8_t text_height,
+                                  fr_glyph_quad *quads, size_t capacity, size_t *count);
 
 fr_status fr_font_set_clipping(fr_font *font, int32_t left, int32_t top, int32_t right, int32_t bottom);
 

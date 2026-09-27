@@ -10,12 +10,15 @@
 //-------------------------------------
 int
 fr_test_c_api(const char *font_name, fr_font_backend backend) {
-    fr_font    *font = NULL;
-    fr_rect    box;
-    uint32_t   buffer[64 * 64] = { 0 };
-    size_t     i;
-    bool       has_pixels = false;
-    int        result     = 0;
+    fr_font         *font = NULL;
+    fr_rect         box;
+    fr_glyph_quad   quads[2];
+    uint32_t        buffer[64 * 64] = { 0 };
+    uint32_t        version;
+    size_t          count;
+    size_t          i;
+    bool            has_pixels = false;
+    int             result     = 0;
 
     CHECK_C(fr_font_create(font_name, backend, &font) == FR_STATUS_OK);
     CHECK_C(font != NULL);
@@ -51,7 +54,9 @@ fr_test_c_api(const char *font_name, fr_font_backend backend) {
     CHECK_C(box.width > 0);
     CHECK_C(box.height > 0);
     CHECK_C(fr_font_set_clipping(font, 0, 0, 64, 64) == FR_STATUS_OK);
+    version = fr_font_get_texture_version(font);
     CHECK_C(fr_font_draw_text(font, "Ag", 24, UINT32_C(0xffffffff), buffer, 64, 8, 8) == FR_STATUS_OK);
+    CHECK_C(fr_font_get_texture_version(font) == version);
     for(i = 0; i < sizeof(buffer) / sizeof(buffer[0]); ++i) {
         if(buffer[i] != 0) {
             has_pixels = true;
@@ -61,6 +66,16 @@ fr_test_c_api(const char *font_name, fr_font_backend backend) {
     CHECK_C(has_pixels);
     CHECK_C(fr_font_get_used_texture_width(font) > 0);
     CHECK_C(fr_font_get_used_texture_height(font) > 0);
+
+    CHECK_C(fr_font_get_glyph_quads(font, "Ag", 24, NULL, 0, &count) == FR_STATUS_OK);
+    CHECK_C(count == 2);
+    CHECK_C(fr_font_get_glyph_quads(font, "Ag", 24, quads, 2, &count) == FR_STATUS_OK);
+    CHECK_C(quads[0].width > 0 && quads[0].texture_rect.width > 0);
+    CHECK_C(quads[1].x > quads[0].x);
+
+    version = fr_font_get_texture_version(font);
+    CHECK_C(fr_font_preload(font, "xyz", 24) == FR_STATUS_OK);
+    CHECK_C(fr_font_get_texture_version(font) != version);
 
     CHECK_C(fr_font_reset(font) == FR_STATUS_OK);
     CHECK_C(fr_font_get_used_texture_width(font) == 0);

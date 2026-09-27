@@ -12,6 +12,15 @@ typedef struct backend_info {
     bool        raster_measured;
 } backend_info;
 
+// The font of the shown atlas, saved with S and read back from its files. It keeps the settings it was saved with.
+//-------------------------------------
+typedef struct baked_info {
+    fr_font *font;
+    size_t   source;                    // The backend it was saved from
+    long     metrics_bytes;
+    long     texture_bytes;
+} baked_info;
+
 //-------------------------------------
 static bool         g_show_bounding_box = true;
 static bool         g_show_texture      = true;
@@ -19,6 +28,7 @@ static size_t       g_show_texture_id   = 0;
 static bool         g_mean_weights      = false;
 static backend_info g_backends[3];
 static size_t       g_backend_count     = 0;
+static baked_info   g_baked             = { NULL, 0, 0, 0 };
 static double       g_draw_seconds      = 0.0;      // Time fr_font_draw_text took, summed over the timed frames
 #if defined(FONTRENDERER_USE_FREETYPE)
 static fr_font     *g_free_type          = NULL;
@@ -44,6 +54,9 @@ static const char       *k_font_path      = "resources/Roboto-Regular.ttf";
 #if defined(FONTRENDERER_USE_FREETYPE)
 static const char       *k_hintings[]     = { "none", "light", "normal", "auto" };
 #endif
+static const char       *k_baked_metrics_path = "baked.frb";
+static const char       *k_baked_texture_path = "baked.tga";
+static const uint8_t    k_baked_size          = 18;
 
 // Returns the box of the text, relative to the window, and adds the time fr_font_draw_text took to g_draw_seconds.
 //-------------------------------------
@@ -138,9 +151,10 @@ get_status_height(void) {
 #endif
 }
 
+// text_font writes the label, because a baked font only has the glyphs it was saved with.
 //-------------------------------------
 static void
-render_atlas(fr_font *font, const char *name, int32_t top) {
+render_atlas(fr_font *font, fr_font *text_font, const char *name, int32_t top) {
     const int32_t left   = k_margin;
     const int32_t right  = example_min((int32_t) g_screen.width - k_margin, (int32_t) g_screen.width);
     const int32_t bottom = example_min((int32_t) g_screen.height - get_status_height() - k_margin, (int32_t) g_screen.height);
@@ -154,7 +168,7 @@ render_atlas(fr_font *font, const char *name, int32_t top) {
     snprintf(label, sizeof(label), "Atlas of %s: %u × %u, %u × %u used", name,
              (unsigned) fr_font_get_texture_width(font), (unsigned) fr_font_get_texture_height(font),
              (unsigned) fr_font_get_used_texture_width(font), (unsigned) fr_font_get_used_texture_height(font));
-    fr_font_draw_text(font, label, 14, k_status_color, g_screen.buffer, g_screen.width, left, top);
+    fr_font_draw_text(text_font, label, 14, k_status_color, g_screen.buffer, g_screen.width, left, top);
     top += 22;
 
     // The checkerboard shows which texels are empty. A texture bigger than the panel is cropped.
@@ -177,6 +191,83 @@ render_atlas(fr_font *font, const char *name, int32_t top) {
 }
 
 //-------------------------------------
+static size_t
+get_atlas_count(void) {
+    return (g_baked.font != NULL) ? g_backend_count + 1 : g_backend_count;
+}
+
+//-------------------------------------
+static void
+render_shown_atlas(int32_t top) {
+    backend_info *shown;
+
+    if(g_show_texture_id == g_backend_count) {
+        char name[64];
+        shown = &g_backends[g_baked.source];
+        snprintf(name, sizeof(name), "baked %s", shown->name);
+        fr_font_set_clipping(shown->font, g_screen.clip_left, g_screen.clip_top, g_screen.clip_right, g_screen.clip_bottom);
+        render_atlas(g_baked.font, shown->font, name, top);
+        return;
+    }
+
+    shown = &g_backends[g_show_texture_id];
+    fr_font_set_clipping(shown->font, g_screen.clip_left, g_screen.clip_top, g_screen.clip_right, g_screen.clip_bottom);
+    render_atlas(shown->font, shown->font, shown->name, top);
+}
+
+//-------------------------------------
+static void
+bake_font(size_t source) {
+    fr_font   *font  = g_backends[source].font;
+    fr_font   *baked = NULL;
+    fr_status status;
+    char      glyphs[256];
+
+    // The label of the row needs the name of the backend and the digits of the sizes.
+    snprintf(glyphs, sizeof(glyphs), "%s Baked from %s · files: 0123456789 + bytes", k_greeting, g_backends[source].name);
+    fr_font_preload(font, glyphs, k_baked_size);
+    fr_font_load_all_kerning_pairs(font);
+
+    status = fr_font_save_baked(font, k_baked_metrics_path, k_baked_texture_path);
+    if(status != FR_STATUS_OK) {
+        fprintf(stderr, "Cannot save the baked font (status %d).\n", (int) status);
+        return;
+    }
+
+    status = fr_font_create_baked(k_baked_metrics_path, k_baked_texture_path, &baked);
+    if(status != FR_STATUS_OK) {
+        fprintf(stderr, "Cannot load the baked font (status %d).\n", (int) status);
+        return;
+    }
+
+    fr_font_destroy(g_baked.font);
+    g_baked.font          = baked;
+    g_baked.source        = source;
+    g_baked.metrics_bytes = example_get_file_size(k_baked_metrics_path);
+    g_baked.texture_bytes = example_get_file_size(k_baked_texture_path);
+    g_show_texture_id     = g_backend_count;
+}
+
+// Returns the bottom of the row.
+//-------------------------------------
+static int32_t
+render_baked_row(int32_t top, struct mfb_timer *timer) {
+    const backend_info *source   = &g_backends[g_baked.source];
+    fr_rect            label_box = { 0, 0, 0, 0 };
+    fr_rect            greeting;
+    char               label[96];
+
+    fr_font_set_clipping(g_baked.font, g_screen.clip_left, g_screen.clip_top, g_screen.clip_right, g_screen.clip_bottom);
+
+    snprintf(label, sizeof(label), "Baked from %s · files: %ld + %ld bytes", source->name, g_baked.metrics_bytes, g_baked.texture_bytes);
+    fr_font_get_text_box(g_baked.font, label, k_baked_size, &label_box);
+    fr_font_draw_text(g_baked.font, label, k_baked_size, source->color, g_screen.buffer, g_screen.width, k_margin, top);
+
+    greeting = render_text(g_baked.font, k_greeting, k_baked_size, k_text_color, k_margin + label_box.x + label_box.width + 2 * k_margin, top, timer);
+    return example_max(top + label_box.y + label_box.height, greeting.y + greeting.height);
+}
+
+//-------------------------------------
 static const char *
 on_off(bool value) {
     return value ? "ON" : "OFF";
@@ -186,8 +277,13 @@ on_off(bool value) {
 static void
 render_status_bar(fr_font *font, double draw_microseconds, float fps) {
     const int32_t top         = (int32_t) g_screen.height - get_status_height();
-    // One number key for each backend, as in "1, 2, 3".
-    const int     keys_length = (int) g_backend_count * 3 - 2;
+    // One number key for each atlas, as in "1, 2, 3".
+    const int     keys_length = (int) get_atlas_count() * 3 - 2;
+#if defined(FONTRENDERER_USE_BAKED)
+    const char    *bake_key   = " · S: bake atlas font";
+#else
+    const char    *bake_key   = "";
+#endif
     char          line[256];
     fr_rect       box = { 0, 0, 0, 0 };
 
@@ -203,7 +299,7 @@ render_status_bar(fr_font *font, double draw_microseconds, float fps) {
              on_off(g_screen.show_clipping), on_off(g_show_texture));
     fr_font_draw_text(font, line, 13, k_status_color, g_screen.buffer, g_screen.width, k_margin, top + 6);
 
-    snprintf(line, sizeof(line), "Tab: clip corner · Arrows: move clip · %.*s: atlas font · Esc: exit", keys_length, "1, 2, 3");
+    snprintf(line, sizeof(line), "Tab: clip corner · Arrows: move clip · %.*s: atlas font%s · Esc: exit", keys_length, "1, 2, 3, 4", bake_key);
     fr_font_draw_text(font, line, 13, k_status_color, g_screen.buffer, g_screen.width, k_margin, top + 24);
 
     snprintf(line, sizeof(line), "DrawText %.0f µs · %.0f FPS", draw_microseconds, fps);
@@ -240,10 +336,17 @@ keyboard(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool is_presse
         case MFB_KB_KEY_1:
         case MFB_KB_KEY_2:
         case MFB_KB_KEY_3:
-            if((size_t) (key - MFB_KB_KEY_1) < g_backend_count) {
+        case MFB_KB_KEY_4:
+            if((size_t) (key - MFB_KB_KEY_1) < get_atlas_count()) {
                 g_show_texture_id = (size_t) (key - MFB_KB_KEY_1);
             }
             break;
+#if defined(FONTRENDERER_USE_BAKED)
+        case MFB_KB_KEY_S:
+            // With the baked atlas shown, its backend is saved again.
+            bake_font((g_show_texture_id < g_backend_count) ? g_show_texture_id : g_baked.source);
+            break;
+#endif
         case MFB_KB_KEY_A:
             for(i = 0; i < g_backend_count; ++i) {
                 fr_font_set_antialias(g_backends[i].font, !fr_font_get_antialias(g_backends[i].font));
@@ -311,6 +414,8 @@ add_backend(fr_font_backend id, const char *name, uint32_t color) {
 static void
 destroy_backends(void) {
     size_t i;
+    fr_font_destroy(g_baked.font);
+    g_baked.font = NULL;
     for(i = 0; i < g_backend_count; ++i) {
         fr_font_destroy(g_backends[i].font);
     }
@@ -375,10 +480,12 @@ main(int argc, char *argv[]) {
             timed_frames      = 0;
         }
 
+        if(g_baked.font != NULL) {
+            bottom = render_baked_row(bottom + k_margin, timer);
+        }
+
         if(g_show_texture) {
-            backend_info *shown = &g_backends[g_show_texture_id];
-            fr_font_set_clipping(shown->font, g_screen.clip_left, g_screen.clip_top, g_screen.clip_right, g_screen.clip_bottom);
-            render_atlas(shown->font, shown->name, bottom + k_margin);
+            render_shown_atlas(bottom + k_margin);
         }
         example_draw_clipping();
 

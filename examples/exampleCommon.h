@@ -44,6 +44,8 @@ void               example_draw_clipping(void);
 // C shows or hides the clip rectangle, and Esc closes the window.
 void               example_handle_key(struct mfb_window *window, mfb_key key, bool is_pressed);
 float              example_get_fps(void);
+// 0 if the file cannot be opened.
+long               example_get_file_size(const char *file_name);
 
 static inline int32_t example_min(int32_t a, int32_t b) { return a < b ? a : b; }
 static inline int32_t example_max(int32_t a, int32_t b) { return a > b ? a : b; }
