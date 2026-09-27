@@ -7,6 +7,12 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
+// CMake defines FONTRENDERER_USE_STB when it builds this backend. Without CMake, define it for every file.
+// Otherwise, a build without the backend would only fail at link time, with a missing symbol that says little.
+#if !defined(FONTRENDERER_USE_STB)
+    #error "FontSTB needs FONTRENDERER_USE_STB. See the README."
+#endif
+
 #include "Font.h"
 //-------------------------------------
 #include <stb/stb_truetype.h>

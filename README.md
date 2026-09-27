@@ -41,10 +41,9 @@ font.DrawText(text, fontSize, color32, bufferDest, bufferDestStride, posX, posY)
 
 For getting the font glyphs the following libraries are used:
 
-- [stb_truetype](https://github.com/nothings/stb/blob/master/stb_truetype.h) (.ttf) :ok:
-- [libschrift](https://github.com/tomolt/libschrift) (.ttf, .otf) :ok:
-- [FreeType](https://freetype.org/) (not yet) ❌
-- [Harfbuzz](https://github.com/harfbuzz/harfbuzz) (not yet) ❌
+- [stb_truetype](https://github.com/nothings/stb/blob/master/stb_truetype.h) (.ttf, .otf) :ok:
+- [libschrift](https://github.com/tomolt/libschrift) (.ttf, and .otf with TrueType outlines: it cannot read CFF outlines) :ok:
+- [FreeType](https://freetype.org/) (.ttf, .otf, and the other scalable formats it reads) :ok: (optional). `FontFT` also has hinting, a monochrome mode and stem darkening, which make small text sharper. See `FontFT.h`.
 
 **Note**: The copy of libschrift in `src/external/libschrift` is version 0.10.2 with some changes. FontSFT needs them, so use this copy and not the upstream one:
 
@@ -56,7 +55,7 @@ For getting the font glyphs the following libraries are used:
 
 ## Kerning
 
-Both backends read the kerning of pairs of glyphs from the `kern` feature of the OpenType `GPOS` table with `GposKerning`. stb_truetype only reads part of `GPOS`, and libschrift does not read it. `GposKerning` reads pair adjustments in both formats and with any value format, also inside extension lookups, in `GPOS` 1.0 and 1.1. As in HarfBuzz, a font without that kerning uses its `kern` table instead.
+Every backend reads the kerning of pairs of glyphs from the `kern` feature of the OpenType `GPOS` table with `GposKerning`. stb_truetype only reads part of `GPOS`, and libschrift does not read it. `GposKerning` reads pair adjustments in both formats and with any value format, also inside extension lookups, in `GPOS` 1.0 and 1.1. As in HarfBuzz, a font without that kerning uses its `kern` table instead.
 
 FontRenderer does not know the script of the text, and a font can kern the same pair differently in each script. `GposKerning` uses the first script whose kerning has the pair: Latin, then the default script, then the rest in the order of the font.
 
@@ -72,10 +71,21 @@ DOS support is minimal. DOS cannot map files, so the whole font is loaded into m
 
 You have two options:
 
-- Use CMake and add_subdirectory() where you put fontRenderer as an external dependency.
-  Then link against fontRenderer lib as exampleRender does.
+- Use CMake. Add FontRenderer with `add_subdirectory()` or `FetchContent`, and link against the `fontRenderer` target, as the examples do.
+  These options choose what is built:
 
-- Select the library you want to use into your project (stb_truetype, libschrift,  ~~FreeType~~) and drop the following files in your project:
+  |Option|Default|What it builds|
+  |---|---|---|
+  |`FONTRENDERER_USE_STB`|`ON`|The stb_truetype backend, `FontSTB`|
+  |`FONTRENDERER_USE_LIBSCHRIFT`|`ON`|The libschrift backend, `FontSFT`|
+  |`FONTRENDERER_USE_FREETYPE`|`OFF`|The FreeType backend, `FontFT`. CMake uses the FreeType installed in the system, and downloads it if there is none|
+  |`FONTRENDERER_BUILD_EXAMPLES`|`ON` only when FontRenderer is the main project|The examples, which show every backend that is on. They download MiniFB, unless the project that adds FontRenderer already has a `minifb` target|
+  |`FONTRENDERER_BUILD_TESTS`|`ON` only when FontRenderer is the main project|The unit tests|
+
+  At least one backend must be on. The library defines `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT` and `FONTRENDERER_USE_FREETYPE` for each backend that is on, also for the code that uses the library. The header of each backend, like `FontSTB.h`, stops the build if its macro is not defined.
+
+- Select the library you want to use into your project (stb_truetype, libschrift, FreeType) and drop the following files in your project.
+  Define the macro of each backend you choose, `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT` or `FONTRENDERER_USE_FREETYPE`, for every file you compile: the header of the backend and the C API need it.
 
   - Font.h
   - Font.cpp
@@ -104,15 +114,32 @@ You have two options:
   - FontSTB.cpp
   - stb_truetype.h
 
+  ---
+
+  **If you choose to use FreeType**:
+
+  - FontFT.h
+  - FontFT.cpp
+  - FreeType itself, which you build and link on your own
+
+  ---
+
+  **If you also want the C API**:
+
+  - FontC.h
+  - FontC.cpp, which only creates fonts with the backends whose macro is defined
+
 ## Licenses
 
 FontRenderer is distributed under the Boost Software License 1.0, see [LICENSE](LICENSE).
 
-The licenses of the third party code and fonts in this repository are in [LICENSES](LICENSES): stb_truetype, libschrift, MiniFB, doctest, and the Roboto and DejaVu fonts used by the example and the tests.
+The licenses of the third party code and fonts in this repository are in [LICENSES](LICENSES): stb_truetype, libschrift, doctest, and the Roboto and DejaVu fonts used by the examples and the tests.
+
+CMake downloads MiniFB for the examples, and FreeType when `FONTRENDERER_USE_FREETYPE` is on and the system has none. They are not part of this repository and have their own licenses. If your program uses the FreeType backend, it includes FreeType, whose license (the FreeType License or the GPLv2, as you choose) asks you to credit FreeType in your documentation.
 
 ## Captures
 
-The example shows both backends side by side, the atlas of one of them, and the keys in the status bar.
+The example shows every backend that is on side by side, the atlas of one of them, and the keys in the status bar.
 
 |Capture|Settings|
 |---|---|

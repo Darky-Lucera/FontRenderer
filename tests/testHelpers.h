@@ -1,7 +1,14 @@
 #pragma once
 
+#if defined(FONTRENDERER_USE_FREETYPE)
+#include "FontFT.h"
+#endif
+#if defined(FONTRENDERER_USE_LIBSCHRIFT)
 #include "FontSFT.h"
+#endif
+#if defined(FONTRENDERER_USE_STB)
 #include "FontSTB.h"
+#endif
 //-------------------------------------
 #include <cstddef>
 
@@ -37,4 +44,40 @@ namespace MindShake { namespace Test {
 
 }} // end of namespace
 
-#define FONT_BACKENDS MindShake::Test::Inspectable<MindShake::FontSTB>, MindShake::Test::Inspectable<MindShake::FontSFT>
+// The backends the library has, and those besides DefaultFont, which the tests compare with it.
+// TEST_CASE_TEMPLATE needs the types written out, so there is one list for each combination.
+#define FONT_TEST_STB MindShake::Test::Inspectable<MindShake::FontSTB>
+#define FONT_TEST_SFT MindShake::Test::Inspectable<MindShake::FontSFT>
+#define FONT_TEST_FT  MindShake::Test::Inspectable<MindShake::FontFT>
+#if defined(FONTRENDERER_USE_STB) && defined(FONTRENDERER_USE_LIBSCHRIFT) && defined(FONTRENDERER_USE_FREETYPE)
+#define FONT_BACKENDS       FONT_TEST_STB, FONT_TEST_SFT, FONT_TEST_FT
+#define FONT_OTHER_BACKENDS FONT_TEST_SFT, FONT_TEST_FT
+#elif defined(FONTRENDERER_USE_STB) && defined(FONTRENDERER_USE_LIBSCHRIFT)
+#define FONT_BACKENDS       FONT_TEST_STB, FONT_TEST_SFT
+#define FONT_OTHER_BACKENDS FONT_TEST_SFT
+#elif defined(FONTRENDERER_USE_STB) && defined(FONTRENDERER_USE_FREETYPE)
+#define FONT_BACKENDS       FONT_TEST_STB, FONT_TEST_FT
+#define FONT_OTHER_BACKENDS FONT_TEST_FT
+#elif defined(FONTRENDERER_USE_LIBSCHRIFT) && defined(FONTRENDERER_USE_FREETYPE)
+#define FONT_BACKENDS       FONT_TEST_SFT, FONT_TEST_FT
+#define FONT_OTHER_BACKENDS FONT_TEST_FT
+#elif defined(FONTRENDERER_USE_STB)
+#define FONT_BACKENDS       FONT_TEST_STB
+#elif defined(FONTRENDERER_USE_LIBSCHRIFT)
+#define FONT_BACKENDS       FONT_TEST_SFT
+#else
+#define FONT_BACKENDS       FONT_TEST_FT
+#endif
+
+namespace MindShake { namespace Test {
+
+    // For the tests of what Font does the same whatever the backend.
+#if defined(FONTRENDERER_USE_STB)
+    using DefaultFont = FontSTB;
+#elif defined(FONTRENDERER_USE_LIBSCHRIFT)
+    using DefaultFont = FontSFT;
+#else
+    using DefaultFont = FontFT;
+#endif
+
+}} // end of namespace

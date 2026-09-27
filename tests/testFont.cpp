@@ -2,6 +2,7 @@
 //-------------------------------------
 #include <doctest/doctest.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <initializer_list>
 #include <random>
@@ -180,7 +181,7 @@ TEST_CASE("Font keeps packed glyphs intact while the texture grows") {
     for(Font::ETextureGrowth growth : { Font::ETextureGrowth::Height, Font::ETextureGrowth::Width, Font::ETextureGrowth::Both }) {
         CAPTURE(int(growth));
 
-        Inspectable<FontSTB> font;
+        Inspectable<Test::DefaultFont> font;
         REQUIRE(font.GetStatus() == Font::EStatus::Ok);
         font.SetTextureGrowth(growth);
 
@@ -414,17 +415,30 @@ TEST_CASE_TEMPLATE("Font used texture size covers every glyph", TFont, FONT_BACK
 }
 
 //-------------------------------------
-TEST_CASE("Font backends place glyphs the same way") {
-    Inspectable<FontSTB> stb;
-    Inspectable<FontSFT> sft;
+TEST_CASE_TEMPLATE("Font reads kerning from GPOS", TFont, FONT_BACKENDS) {
+    // The test font only has kerning in GPOS.
+    TFont          font;
+    const uint32_t a = font.GetCodePointGlyph('A');
+    const uint32_t v = font.GetCodePointGlyph('V');
+
+    CHECK(font.GetKerning(a, v) < 0);
+    CHECK(font.GetKerning(a, a) == 0);
+}
+
+#if defined(FONT_OTHER_BACKENDS)
+
+//-------------------------------------
+TEST_CASE_TEMPLATE("Font backends place glyphs the same way", TFont, FONT_OTHER_BACKENDS) {
+    Inspectable<Test::DefaultFont> reference;
+    TFont                          font;
 
     for(int height = 10; height <= 70; height += 6) {
         for(uint32_t codePoint = 33; codePoint < 127; ++codePoint) {
             CAPTURE(height);
             CAPTURE(codePoint);
 
-            const CodePointHeightData &a = stb.GetCodePointDataForHeight(codePoint, uint8_t(height));
-            const CodePointHeightData &b = sft.GetCodePointDataForHeight(codePoint, uint8_t(height));
+            const CodePointHeightData &a = reference.GetCodePointDataForHeight(codePoint, uint8_t(height));
+            const CodePointHeightData &b = font.GetCodePointDataForHeight(codePoint, uint8_t(height));
             REQUIRE(a.glyph > 0);
             REQUIRE(b.glyph > 0);
 
@@ -439,11 +453,11 @@ TEST_CASE("Font backends place glyphs the same way") {
 }
 
 //-------------------------------------
-TEST_CASE("Font backends draw every glyph in the same place") {
-    Inspectable<FontSTB> stb(Test::kItalicFontPath);
-    Inspectable<FontSFT> sft(Test::kItalicFontPath);
-    REQUIRE(stb.GetStatus() == Font::EStatus::Ok);
-    REQUIRE(sft.GetStatus() == Font::EStatus::Ok);
+TEST_CASE_TEMPLATE("Font backends draw every glyph in the same place", TFont, FONT_OTHER_BACKENDS) {
+    Inspectable<Test::DefaultFont> reference(Test::kItalicFontPath);
+    TFont                          font(Test::kItalicFontPath);
+    REQUIRE(reference.GetStatus() == Font::EStatus::Ok);
+    REQUIRE(font.GetStatus() == Font::EStatus::Ok);
 
     const int kWidth = 160, kHeight = 160, kPosX = 50, kPosY = 20;
     for(int height = 8; height <= 96; height += 4) {
@@ -452,49 +466,153 @@ TEST_CASE("Font backends draw every glyph in the same place") {
             CAPTURE(codePoint);
 
             const char            text[] = { char(codePoint), 0 };
-            std::vector<uint32_t> bufferSTB(kWidth * kHeight, 0);
-            std::vector<uint32_t> bufferSFT(kWidth * kHeight, 0);
-            stb.DrawText(text, uint8_t(height), 0xffffffffu, bufferSTB.data(), kWidth, kPosX, kPosY);
-            sft.DrawText(text, uint8_t(height), 0xffffffffu, bufferSFT.data(), kWidth, kPosX, kPosY);
+            std::vector<uint32_t> referenceBuffer(kWidth * kHeight, 0);
+            std::vector<uint32_t> buffer(kWidth * kHeight, 0);
+            reference.DrawText(text, uint8_t(height), 0xffffffffu, referenceBuffer.data(), kWidth, kPosX, kPosY);
+            font.DrawText(text, uint8_t(height), 0xffffffffu, buffer.data(), kWidth, kPosX, kPosY);
 
             // Faint edge pixels, rounded differently by each rasterizer, barely move the center; a misplaced glyph moves it a pixel.
-            double stbX, stbY, sftX, sftY;
-            FindInkCenter(bufferSTB, kWidth, stbX, stbY);
-            FindInkCenter(bufferSFT, kWidth, sftX, sftY);
-            CHECK(std::abs(stbX - sftX) < 0.5);
-            CHECK(std::abs(stbY - sftY) < 0.5);
+            double referenceX, referenceY, x, y;
+            FindInkCenter(referenceBuffer, kWidth, referenceX, referenceY);
+            FindInkCenter(buffer, kWidth, x, y);
+            CHECK(std::abs(referenceX - x) < 0.5);
+            CHECK(std::abs(referenceY - y) < 0.5);
         }
     }
 }
 
 //-------------------------------------
-TEST_CASE_TEMPLATE("Font reads kerning from GPOS", TFont, FONT_BACKENDS) {
-    // The test font only has kerning in GPOS.
-    TFont          font;
-    const uint32_t a = font.GetCodePointGlyph('A');
-    const uint32_t v = font.GetCodePointGlyph('V');
-
-    CHECK(font.GetKerning(a, v) < 0);
-    CHECK(font.GetKerning(a, a) == 0);
-}
-
-//-------------------------------------
-TEST_CASE("Font backends read the same kerning") {
+TEST_CASE_TEMPLATE("Font backends read the same kerning", TFont, FONT_OTHER_BACKENDS) {
     // The italic font has kerning in both GPOS and 'kern'.
     for (const char *fontPath : { Test::kFontPath, Test::kItalicFontPath }) {
         CAPTURE(fontPath);
-        Inspectable<FontSTB> stb(fontPath);
-        Inspectable<FontSFT> sft(fontPath);
-        int                  kernedPairs = 0;
+        Inspectable<Test::DefaultFont> reference(fontPath);
+        TFont                          font(fontPath);
+        int                            kernedPairs = 0;
         for (uint32_t left = 32; left < 127; ++left) {
             for (uint32_t right = 32; right < 127; ++right) {
                 CAPTURE(left);
                 CAPTURE(right);
-                const int kerning = stb.GetKerning(stb.GetCodePointGlyph(left), stb.GetCodePointGlyph(right));
-                CHECK(kerning == sft.GetKerning(sft.GetCodePointGlyph(left), sft.GetCodePointGlyph(right)));
+                const int kerning = reference.GetKerning(reference.GetCodePointGlyph(left), reference.GetCodePointGlyph(right));
+                CHECK(kerning == font.GetKerning(font.GetCodePointGlyph(left), font.GetCodePointGlyph(right)));
                 kernedPairs += (kerning != 0) ? 1 : 0;
             }
         }
         CHECK(kernedPairs > 100);
     }
 }
+
+#endif
+
+#if defined(FONTRENDERER_USE_FREETYPE)
+
+//-------------------------------------
+namespace {
+
+    // White text on a black buffer, so each pixel keeps the coverage of the text.
+    //---------------------------------
+    std::vector<uint32_t>
+    DrawWhite(Font &font, const char *text, uint8_t height) {
+        std::vector<uint32_t> buffer(200 * 60, 0);
+        font.DrawText(text, height, 0xffffffffu, buffer.data(), 200, 4, 4);
+        return buffer;
+    }
+
+    //---------------------------------
+    uint64_t
+    SumCoverage(const std::vector<uint32_t> &buffer) {
+        uint64_t sum = 0;
+        for(const uint32_t pixel : buffer) {
+            sum += pixel & 0xff;
+        }
+        return sum;
+    }
+
+} // end of namespace
+
+//-------------------------------------
+TEST_CASE("FontFT settings discard the rendered glyphs only when they change") {
+    Inspectable<FontFT> font;
+    const auto          render = [&font] { font.GetCodePointDataForHeight('a', 20); };
+
+    render();
+    font.SetHinting(FontFT::EHinting::None);
+    font.SetMonochrome(false);
+    font.SetStemDarkening(false);
+    CHECK(font.GetGlyphCount() == 1);
+
+    font.SetHinting(FontFT::EHinting::Light);
+    CHECK(font.GetHinting() == FontFT::EHinting::Light);
+    CHECK(font.GetGlyphCount() == 0);
+
+    render();
+    font.SetMonochrome(true);
+    CHECK(font.GetMonochrome());
+    CHECK(font.GetGlyphCount() == 0);
+
+    render();
+    font.SetStemDarkening(true);
+    CHECK(font.GetStemDarkening());
+    CHECK(font.GetGlyphCount() == 0);
+}
+
+//-------------------------------------
+TEST_CASE("FontFT monochrome draws pixels fully on or off") {
+    Inspectable<FontFT> font;
+    const auto          isGray = [](uint32_t pixel) { return (pixel & 0xff) != 0 && (pixel & 0xff) != 0xff; };
+
+    std::vector<uint32_t> gray = DrawWhite(font, "Hamburg", 20);
+    CHECK(std::count_if(gray.begin(), gray.end(), isGray) > 0);
+
+    for(FontFT::EHinting hinting : { FontFT::EHinting::None, FontFT::EHinting::Light, FontFT::EHinting::Normal, FontFT::EHinting::Auto }) {
+        CAPTURE(int(hinting));
+        font.SetHinting(hinting);
+        font.SetMonochrome(true);
+        std::vector<uint32_t> mono = DrawWhite(font, "Hamburg", 20);
+        CHECK(std::count_if(mono.begin(), mono.end(), isGray) == 0);
+        CHECK(SumCoverage(mono) > 0);
+        font.SetMonochrome(false);
+    }
+}
+
+//-------------------------------------
+TEST_CASE("FontFT hinting keeps the advances unless it works sideways") {
+    Inspectable<FontFT> font;
+    const float         outline = font.GetCodePointDataForHeight('a', 13).advanceWidth;
+    REQUIRE(outline != std::floor(outline));
+
+    font.SetHinting(FontFT::EHinting::Light);
+    CHECK(font.GetCodePointDataForHeight('a', 13).advanceWidth == outline);
+
+    for(FontFT::EHinting hinting : { FontFT::EHinting::Normal, FontFT::EHinting::Auto }) {
+        CAPTURE(int(hinting));
+        font.SetHinting(hinting);
+        const float hinted = font.GetCodePointDataForHeight('a', 13).advanceWidth;
+        CHECK(hinted == std::floor(hinted));
+        CHECK(std::abs(hinted - outline) <= 1.0f);
+    }
+}
+
+//-------------------------------------
+TEST_CASE("FontFT hinting changes the glyphs at small sizes") {
+    Inspectable<FontFT>         font;
+    const std::vector<uint32_t> outline = DrawWhite(font, "Hamburgefonstiv", 11);
+
+    for(FontFT::EHinting hinting : { FontFT::EHinting::Light, FontFT::EHinting::Normal, FontFT::EHinting::Auto }) {
+        CAPTURE(int(hinting));
+        font.SetHinting(hinting);
+        CHECK(DrawWhite(font, "Hamburgefonstiv", 11) != outline);
+    }
+}
+
+//-------------------------------------
+TEST_CASE("FontFT stem darkening thickens light hinted text") {
+    Inspectable<FontFT> font;
+    font.SetHinting(FontFT::EHinting::Light);
+    const uint64_t thin = SumCoverage(DrawWhite(font, "Hamburgefonstiv", 11));
+
+    font.SetStemDarkening(true);
+    CHECK(SumCoverage(DrawWhite(font, "Hamburgefonstiv", 11)) > thin);
+}
+
+#endif

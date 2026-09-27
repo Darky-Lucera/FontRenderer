@@ -6,8 +6,15 @@
 //-----------------------------------------------------------------------------
 
 #include "FontC.h"
+#if defined(FONTRENDERER_USE_FREETYPE)
+#include "FontFT.h"
+#endif
+#if defined(FONTRENDERER_USE_LIBSCHRIFT)
 #include "FontSFT.h"
+#endif
+#if defined(FONTRENDERER_USE_STB)
 #include "FontSTB.h"
+#endif
 //-------------------------------------
 #include <memory>
 #include <new>
@@ -34,9 +41,19 @@ static_assert(FR_FONT_SIZE_MODE_EM_SIZE     == int(MindShake::Font::ESizeMode::E
 static_assert(FR_FONT_PACKING_LEVEL_BOTTOM_LEFT   == int(MindShake::Font::ELevelChoiceHeuristic::LevelBottomLeft),  "fr_font_packing_heuristic must match Font::ELevelChoiceHeuristic");
 static_assert(FR_FONT_PACKING_LEVEL_MIN_WASTE_FIT == int(MindShake::Font::ELevelChoiceHeuristic::LevelMinWasteFit), "fr_font_packing_heuristic must match Font::ELevelChoiceHeuristic");
 
+#if defined(FONTRENDERER_USE_FREETYPE)
+static_assert(FR_FONT_FT_HINTING_NONE   == int(MindShake::FontFT::EHinting::None),   "fr_font_ft_hinting must match FontFT::EHinting");
+static_assert(FR_FONT_FT_HINTING_LIGHT  == int(MindShake::FontFT::EHinting::Light),  "fr_font_ft_hinting must match FontFT::EHinting");
+static_assert(FR_FONT_FT_HINTING_NORMAL == int(MindShake::FontFT::EHinting::Normal), "fr_font_ft_hinting must match FontFT::EHinting");
+static_assert(FR_FONT_FT_HINTING_AUTO   == int(MindShake::FontFT::EHinting::Auto),   "fr_font_ft_hinting must match FontFT::EHinting");
+#endif
+
 //-------------------------------------
 struct fr_font {
     std::unique_ptr<MindShake::Font> value;
+#if defined(FONTRENDERER_USE_FREETYPE)
+    MindShake::FontFT                *freeType {};     // The same font as value, when it uses FreeType
+#endif
 };
 
 namespace {
@@ -78,6 +95,34 @@ namespace {
         }
     }
 
+#if defined(FONTRENDERER_USE_FREETYPE)
+    //---------------------------------
+    const MindShake::FontFT *
+    GetFreeType(const fr_font *font) {
+        return (font != nullptr && font->value != nullptr) ? font->freeType : nullptr;
+    }
+
+    //---------------------------------
+    template <class TFunction>
+    fr_status
+    InvokeFreeType(fr_font *font, TFunction function) noexcept {
+        if(font == nullptr || font->value == nullptr) {
+            return FR_STATUS_INVALID_ARGUMENT;
+        }
+        if(font->freeType == nullptr) {
+            return FR_STATUS_INVALID_BACKEND;
+        }
+
+        return Invoke(font, [font, &function](MindShake::Font &) { function(*font->freeType); });
+    }
+#else
+    //---------------------------------
+    fr_status
+    RejectFreeType(const fr_font *font) {
+        return (font == nullptr || font->value == nullptr) ? FR_STATUS_INVALID_ARGUMENT : FR_STATUS_INVALID_BACKEND;
+    }
+#endif
+
 } // namespace
 
 extern "C" {
@@ -94,17 +139,32 @@ fr_font_create(const char *font_name, fr_font_backend backend, fr_font **out_fon
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
-    if(backend != FR_FONT_BACKEND_STB && backend != FR_FONT_BACKEND_SFT) {
-        return FR_STATUS_INVALID_BACKEND;
-    }
-
     try {
         std::unique_ptr<MindShake::Font> value;
-        if(backend == FR_FONT_BACKEND_STB) {
-            value = std::make_unique<MindShake::FontSTB>(font_name);
-        }
-        else {
-            value = std::make_unique<MindShake::FontSFT>(font_name);
+#if defined(FONTRENDERER_USE_FREETYPE)
+        MindShake::FontFT                *freeType = nullptr;
+#endif
+        switch(backend) {
+#if defined(FONTRENDERER_USE_STB)
+            case FR_FONT_BACKEND_STB:
+                value = std::make_unique<MindShake::FontSTB>(font_name);
+                break;
+#endif
+#if defined(FONTRENDERER_USE_LIBSCHRIFT)
+            case FR_FONT_BACKEND_SFT:
+                value = std::make_unique<MindShake::FontSFT>(font_name);
+                break;
+#endif
+#if defined(FONTRENDERER_USE_FREETYPE)
+            case FR_FONT_BACKEND_FT: {
+                auto font = std::make_unique<MindShake::FontFT>(font_name);
+                freeType  = font.get();
+                value     = std::move(font);
+                break;
+            }
+#endif
+            default:
+                return FR_STATUS_INVALID_BACKEND;
         }
 
         const fr_status status = ToStatus(value->GetStatus());
@@ -114,6 +174,9 @@ fr_font_create(const char *font_name, fr_font_backend backend, fr_font **out_fon
 
         auto font = std::make_unique<fr_font>();
         font->value = std::move(value);
+#if defined(FONTRENDERER_USE_FREETYPE)
+        font->freeType = freeType;
+#endif
         *out_font = font.release();
         return FR_STATUS_OK;
     }
@@ -392,6 +455,93 @@ fr_font_get_antialias_border(const fr_font *font) {
 int32_t
 fr_font_get_antialias_corner(const fr_font *font) {
     return (font != nullptr && font->value != nullptr) ? font->value->GetAntialiasCorner() : 0;
+}
+
+//-------------------------------------
+fr_status
+fr_font_ft_set_hinting(fr_font *font, fr_font_ft_hinting hinting) {
+#if defined(FONTRENDERER_USE_FREETYPE)
+    MindShake::FontFT::EHinting value;
+    switch(hinting) {
+        case FR_FONT_FT_HINTING_NONE:   value = MindShake::FontFT::EHinting::None;   break;
+        case FR_FONT_FT_HINTING_LIGHT:  value = MindShake::FontFT::EHinting::Light;  break;
+        case FR_FONT_FT_HINTING_NORMAL: value = MindShake::FontFT::EHinting::Normal; break;
+        case FR_FONT_FT_HINTING_AUTO:   value = MindShake::FontFT::EHinting::Auto;   break;
+        default: return FR_STATUS_INVALID_ARGUMENT;
+    }
+
+    return InvokeFreeType(font, [value](MindShake::FontFT &freeType) { freeType.SetHinting(value); });
+#else
+    (void) hinting;
+    return RejectFreeType(font);
+#endif
+}
+
+//-------------------------------------
+fr_font_ft_hinting
+fr_font_ft_get_hinting(const fr_font *font) {
+#if defined(FONTRENDERER_USE_FREETYPE)
+    const MindShake::FontFT *freeType = GetFreeType(font);
+    if(freeType == nullptr) {
+        return FR_FONT_FT_HINTING_INVALID;
+    }
+
+    switch(freeType->GetHinting()) {
+        case MindShake::FontFT::EHinting::None:   return FR_FONT_FT_HINTING_NONE;
+        case MindShake::FontFT::EHinting::Light:  return FR_FONT_FT_HINTING_LIGHT;
+        case MindShake::FontFT::EHinting::Normal: return FR_FONT_FT_HINTING_NORMAL;
+        case MindShake::FontFT::EHinting::Auto:   return FR_FONT_FT_HINTING_AUTO;
+    }
+#else
+    (void) font;
+#endif
+    return FR_FONT_FT_HINTING_INVALID;
+}
+
+//-------------------------------------
+fr_status
+fr_font_ft_set_monochrome(fr_font *font, bool enabled) {
+#if defined(FONTRENDERER_USE_FREETYPE)
+    return InvokeFreeType(font, [enabled](MindShake::FontFT &freeType) { freeType.SetMonochrome(enabled); });
+#else
+    (void) enabled;
+    return RejectFreeType(font);
+#endif
+}
+
+//-------------------------------------
+bool
+fr_font_ft_get_monochrome(const fr_font *font) {
+#if defined(FONTRENDERER_USE_FREETYPE)
+    const MindShake::FontFT *freeType = GetFreeType(font);
+    return freeType != nullptr && freeType->GetMonochrome();
+#else
+    (void) font;
+    return false;
+#endif
+}
+
+//-------------------------------------
+fr_status
+fr_font_ft_set_stem_darkening(fr_font *font, bool enabled) {
+#if defined(FONTRENDERER_USE_FREETYPE)
+    return InvokeFreeType(font, [enabled](MindShake::FontFT &freeType) { freeType.SetStemDarkening(enabled); });
+#else
+    (void) enabled;
+    return RejectFreeType(font);
+#endif
+}
+
+//-------------------------------------
+bool
+fr_font_ft_get_stem_darkening(const fr_font *font) {
+#if defined(FONTRENDERER_USE_FREETYPE)
+    const MindShake::FontFT *freeType = GetFreeType(font);
+    return freeType != nullptr && freeType->GetStemDarkening();
+#else
+    (void) font;
+    return false;
+#endif
 }
 
 } // extern "C"

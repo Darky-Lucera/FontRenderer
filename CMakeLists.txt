@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.10)
-project(FontRenderer VERSION 0.4.0)
+cmake_minimum_required(VERSION 3.16)
+project(FontRenderer VERSION 0.5.0)
 
 # Options
 #--------------------------------------
@@ -10,16 +10,54 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 else()
     set(FONTRENDERER_IS_TOP_LEVEL OFF)
 endif()
-option(FONTRENDERER_BUILD_EXAMPLES "Build the example, which needs MiniFB" ${FONTRENDERER_IS_TOP_LEVEL})
-option(FONTRENDERER_BUILD_TESTS    "Build the unit tests"                  ${FONTRENDERER_IS_TOP_LEVEL})
+option(FONTRENDERER_BUILD_EXAMPLES "Build the examples, which need MiniFB"                ${FONTRENDERER_IS_TOP_LEVEL})
+option(FONTRENDERER_BUILD_TESTS    "Build the unit tests"                                ${FONTRENDERER_IS_TOP_LEVEL})
 
-# dependencies
+option(FONTRENDERER_USE_STB        "Build the stb_truetype backend"                      ON)
+option(FONTRENDERER_USE_LIBSCHRIFT "Build the libschrift backend"                        ON)
+option(FONTRENDERER_USE_FREETYPE   "Build the FreeType backend"                          OFF)
+
+if(NOT FONTRENDERER_USE_STB AND NOT FONTRENDERER_USE_LIBSCHRIFT AND NOT FONTRENDERER_USE_FREETYPE)
+    message(FATAL_ERROR "FontRenderer needs FONTRENDERER_USE_STB, FONTRENDERER_USE_LIBSCHRIFT or FONTRENDERER_USE_FREETYPE")
+endif()
+
+# Dependencies
 #--------------------------------------
+include(FetchContent)
 
-# MiniFB
-if(FONTRENDERER_BUILD_EXAMPLES)
-    option(MINIFB_BUILD_EXAMPLES OFF)
-    add_subdirectory("dependencies/minifb" EXCLUDE_FROM_ALL)
+# MiniFB is only for the examples. A project that already has it, like MiniFB when it builds its own examples
+# with FontRenderer, keeps its copy.
+if(FONTRENDERER_BUILD_EXAMPLES AND NOT TARGET minifb)
+    set(MINIFB_BUILD_EXAMPLES     OFF)
+    set(MINIFB_BUILD_TESTS        OFF)
+    set(MINIFB_BUILD_VERSION_INFO OFF)
+    FetchContent_Declare(minifb
+        GIT_REPOSITORY https://github.com/emoon/minifb.git
+        GIT_TAG        v0.14.0
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(minifb)
+endif()
+
+# FreeType from the system if it has one, and else from its sources.
+if(FONTRENDERER_USE_FREETYPE)
+    find_package(Freetype QUIET)
+    if(NOT TARGET Freetype::Freetype)
+        # Otherwise FreeType links any zlib, libpng, HarfBuzz... it finds, and the build changes from one computer to another.
+        set(FT_DISABLE_ZLIB     ON)
+        set(FT_DISABLE_BZIP2    ON)
+        set(FT_DISABLE_PNG      ON)
+        set(FT_DISABLE_HARFBUZZ ON)
+        set(FT_DISABLE_BROTLI   ON)
+        set(SKIP_INSTALL_ALL    ON)
+        FetchContent_Declare(freetype
+            GIT_REPOSITORY https://github.com/freetype/freetype.git
+            GIT_TAG        VER-2-14-3
+            GIT_SHALLOW    TRUE
+        )
+        FetchContent_MakeAvailable(freetype)
+        add_library(Freetype::Freetype ALIAS freetype)
+    endif()
 endif()
 
 # C/C++ version
@@ -101,10 +139,6 @@ set(SRC_FontRenderer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Font.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontC.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontC.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSFT.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSFT.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/GposKerning.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/GposKerning.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MappedFile.cpp
@@ -112,12 +146,28 @@ set(SRC_FontRenderer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/UTF8_Utils.h
-    #--
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/external/libschrift/schrift.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/external/libschrift/schrift.h
-    #--
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/external/stb/stb_truetype.h
 )
+if(FONTRENDERER_USE_STB)
+    list(APPEND SRC_FontRenderer
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/external/stb/stb_truetype.h
+    )
+endif()
+if(FONTRENDERER_USE_LIBSCHRIFT)
+    list(APPEND SRC_FontRenderer
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSFT.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSFT.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/external/libschrift/schrift.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/external/libschrift/schrift.h
+    )
+endif()
+if(FONTRENDERER_USE_FREETYPE)
+    list(APPEND SRC_FontRenderer
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/FontFT.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/FontFT.h
+    )
+endif()
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" FILES ${SRC_FontRenderer})
 
 add_library(fontRenderer STATIC
@@ -125,11 +175,29 @@ add_library(fontRenderer STATIC
 )
 target_include_directories(fontRenderer PUBLIC src)
 target_include_directories(fontRenderer PUBLIC src/external)
+# Public, so that code which uses the library knows which backends it has.
+# The header of a backend stops the build without its macro, instead of failing later at link time.
+if(FONTRENDERER_USE_STB)
+    target_compile_definitions(fontRenderer PUBLIC FONTRENDERER_USE_STB)
+endif()
+if(FONTRENDERER_USE_LIBSCHRIFT)
+    target_compile_definitions(fontRenderer PUBLIC FONTRENDERER_USE_LIBSCHRIFT)
+endif()
+if(FONTRENDERER_USE_FREETYPE)
+    target_compile_definitions(fontRenderer PUBLIC FONTRENDERER_USE_FREETYPE)
+    target_link_libraries(fontRenderer PRIVATE Freetype::Freetype)
+endif()
 
 #--------------------------------------
 if(FONTRENDERER_BUILD_EXAMPLES)
+    set(SRC_ExampleCommon
+        ${CMAKE_CURRENT_SOURCE_DIR}/examples/exampleCommon.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/examples/exampleCommon.h
+    )
+
     set(SRC_ExampleRender
         ${CMAKE_CURRENT_SOURCE_DIR}/examples/exampleRender.cpp
+        ${SRC_ExampleCommon}
     )
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/examples" FILES ${SRC_ExampleRender})
 
@@ -141,6 +209,7 @@ if(FONTRENDERER_BUILD_EXAMPLES)
 
     set(SRC_ExampleRenderC
         ${CMAKE_CURRENT_SOURCE_DIR}/examples/exampleRenderC.c
+        ${SRC_ExampleCommon}
     )
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/examples" FILES ${SRC_ExampleRenderC})
 
@@ -181,6 +250,10 @@ if(FONTRENDERER_BUILD_TESTS)
     target_include_directories(unitTests PRIVATE tests tests/external)
     target_compile_definitions(unitTests PRIVATE FONT_RENDERER_TEST_RESOURCES="${CMAKE_CURRENT_SOURCE_DIR}/bin/resources/")
     target_link_libraries(unitTests fontRenderer)
+    # The tests render with FreeType itself, to check that FontFT draws the same.
+    if(FONTRENDERER_USE_FREETYPE)
+        target_link_libraries(unitTests Freetype::Freetype)
+    endif()
     # DJGPP (DOS) has neither the threads nor the POSIX signal stacks doctest uses by default.
     if(DJGPP)
         target_compile_definitions(unitTests PRIVATE DOCTEST_CONFIG_NO_MULTITHREADING DOCTEST_CONFIG_NO_POSIX_SIGNALS)

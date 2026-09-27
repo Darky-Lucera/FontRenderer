@@ -9,6 +9,12 @@
 #include <memory>
 #include <random>
 #include <vector>
+#if defined(FONTRENDERER_USE_FREETYPE)
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <cstring>
+#include <math.h>      // ::lround, as DJGPP has no std::lround
+#endif
 
 using namespace MindShake;
 
@@ -34,6 +40,7 @@ namespace {
         return std::vector<uint8_t>(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
 
+#if defined(FONTRENDERER_USE_STB)
     //---------------------------------
     Bitmap
     Rasterize(const FontSTB &, uint32_t codePoint, float scale) {
@@ -59,7 +66,9 @@ namespace {
 
         return bitmap;
     }
+#endif
 
+#if defined(FONTRENDERER_USE_LIBSCHRIFT)
     //---------------------------------
     Bitmap
     Rasterize(const FontSFT &, uint32_t codePoint, float scale) {
@@ -93,6 +102,47 @@ namespace {
 
         return bitmap;
     }
+#endif
+
+#if defined(FONTRENDERER_USE_FREETYPE)
+    //---------------------------------
+    Bitmap
+    Rasterize(const FontFT &, uint32_t codePoint, float scale) {
+        static const std::vector<uint8_t> data    = ReadFile(Test::kFontPath);
+        static const FT_Library           library = [] {
+            FT_Library value = nullptr;
+            FT_Init_FreeType(&value);
+            return value;
+        }();
+        static const FT_Face              face    = [] {
+            FT_Face value = nullptr;
+            FT_New_Memory_Face(library, data.data(), FT_Long(data.size()), 0, &value);
+            return value;
+        }();
+
+        // Same request and flags as FontFT, so both renders are bit identical.
+        FT_Size_RequestRec request {};
+        request.type   = FT_SIZE_REQUEST_TYPE_SCALES;
+        request.width  = FT_Long(::lround(double(scale) * 64.0 * 65536.0));
+        request.height = request.width;
+        FT_Request_Size(face, &request);
+        FT_Load_Glyph(face, FT_Get_Char_Index(face, codePoint), FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP);
+        FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
+
+        const FT_Bitmap &source = face->glyph->bitmap;
+        Bitmap           bitmap;
+        bitmap.width  = int(source.width);
+        bitmap.height = int(source.rows);
+        bitmap.x      = face->glyph->bitmap_left;
+        bitmap.y      = -face->glyph->bitmap_top;
+        bitmap.pixels.resize(size_t(bitmap.width) * size_t(bitmap.height));
+        for(int y = 0; y < bitmap.height; ++y) {
+            memcpy(&bitmap.pixels[size_t(y) * size_t(bitmap.width)], source.buffer + size_t(y) * size_t(source.pitch), size_t(bitmap.width));
+        }
+
+        return bitmap;
+    }
+#endif
 
 } // end of namespace
 

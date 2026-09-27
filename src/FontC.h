@@ -35,7 +35,8 @@ enum {
 typedef int32_t fr_font_backend;
 enum {
     FR_FONT_BACKEND_STB = 0,
-    FR_FONT_BACKEND_SFT
+    FR_FONT_BACKEND_SFT,
+    FR_FONT_BACKEND_FT
 };
 
 //-------------------------------------
@@ -64,6 +65,16 @@ enum {
 };
 
 //-------------------------------------
+typedef int32_t fr_font_ft_hinting;
+enum {
+    FR_FONT_FT_HINTING_NONE = 0,
+    FR_FONT_FT_HINTING_LIGHT,
+    FR_FONT_FT_HINTING_NORMAL,
+    FR_FONT_FT_HINTING_AUTO,
+    FR_FONT_FT_HINTING_INVALID = -1
+};
+
+//-------------------------------------
 typedef struct fr_rect {
     int32_t x;
     int32_t y;
@@ -78,6 +89,7 @@ typedef struct fr_rect {
 // With a NULL font, the getters return 0, false, NULL or the *_INVALID value.
 
 // Creates a font using the selected rasterizer. On failure, *out_font is NULL.
+// A backend the library was built without gives FR_STATUS_INVALID_BACKEND.
 fr_status fr_font_create(const char *font_name, fr_font_backend backend, fr_font **out_font);
 void      fr_font_destroy(fr_font *font);
 
@@ -125,6 +137,16 @@ fr_status fr_font_set_antialias_weights(fr_font *font, int32_t center, int32_t b
 int32_t   fr_font_get_antialias_center(const fr_font *font);
 int32_t   fr_font_get_antialias_border(const fr_font *font);
 int32_t   fr_font_get_antialias_corner(const fr_font *font);
+
+// Only for fonts created with FR_FONT_BACKEND_FT. Other fonts give FR_STATUS_INVALID_BACKEND,
+// and the getters give false or FR_FONT_FT_HINTING_INVALID. See FontFT.h for what each setting does.
+// Changing any of them discards every rendered glyph, like fr_font_reset.
+fr_status          fr_font_ft_set_hinting(fr_font *font, fr_font_ft_hinting hinting);
+fr_font_ft_hinting fr_font_ft_get_hinting(const fr_font *font);
+fr_status          fr_font_ft_set_monochrome(fr_font *font, bool enabled);
+bool               fr_font_ft_get_monochrome(const fr_font *font);
+fr_status          fr_font_ft_set_stem_darkening(fr_font *font, bool enabled);
+bool               fr_font_ft_get_stem_darkening(const fr_font *font);
 
 #ifdef __cplusplus
 } // extern "C"
