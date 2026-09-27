@@ -36,24 +36,9 @@ FontSTB::FontSTB(const char *fontName) : Font(fontName) {
     stbtt_GetFontVMetrics(&mInfo, &mAscent, &mDescent, &mLineGap);
     mUnitsPerEm = int(::lround(1.0f / stbtt_ScaleForMappingEmToPixels(&mInfo, 1.0f)));
 
-    GetKerningTable();
+    mGposKerning.Load(data, mFontFile.GetSize(), size_t(offset));
 
     mStatus = EStatus::Ok;
-}
-
-//-------------------------------------
-void
-FontSTB::GetKerningTable() {
-    int length = stbtt_GetKerningTableLength(&mInfo);
-    if (length > 0) {
-        std::vector<stbtt_kerningentry> kernings(static_cast<size_t>(length));
-        stbtt_GetKerningTable(&mInfo, kernings.data(), length);
-        mKerningData.reserve(size_t(length));
-        for (int k = 0; k < length; ++k) {
-            auto &current = kernings[k];
-            mKerningData[(uint64_t(current.glyph1) << 32) | uint64_t(current.glyph2)] = current.advance;
-        }
-    }
 }
 
 //-------------------------------------
@@ -133,17 +118,7 @@ FontSTB::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
 
 //-------------------------------------
 int
-FontSTB::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
-    const uint64_t key = (uint64_t(leftGlyph) << 32) | uint64_t(rightGlyph);
-
-    auto it = mKerningData.find(key);
-    if(it == mKerningData.end()) {
-        // The 'kern' pairs are preloaded, so this only adds what stb can read from GPOS.
-        // stb reads GPOS alone when the font has it, and it only understands part of that table,
-        // so it cannot replace the 'kern' lookup: fonts with both tables would lose their kerning.
-        const int advance = stbtt_GetGlyphKernAdvance(&mInfo, int(leftGlyph), int(rightGlyph));
-        it = mKerningData.insert({ key, advance }).first;
-    }
-
-    return it->second;
+FontSTB::GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
+    // The public stbtt_GetGlyphKernAdvance ignores 'kern' when the font has GPOS.
+    return stbtt__GetGlyphKernInfoAdvance(&mInfo, int(leftGlyph), int(rightGlyph));
 }

@@ -468,12 +468,33 @@ TEST_CASE("Font backends draw every glyph in the same place") {
 }
 
 //-------------------------------------
-TEST_CASE("FontSTB reads kerning from GPOS") {
-    // The test font only has kerning in GPOS, which libschrift cannot read, so only STB is checked.
-    Inspectable<FontSTB> font;
-    const uint32_t       a = font.GetCodePointGlyph('A');
-    const uint32_t       v = font.GetCodePointGlyph('V');
+TEST_CASE_TEMPLATE("Font reads kerning from GPOS", TFont, FONT_BACKENDS) {
+    // The test font only has kerning in GPOS.
+    TFont          font;
+    const uint32_t a = font.GetCodePointGlyph('A');
+    const uint32_t v = font.GetCodePointGlyph('V');
 
     CHECK(font.GetKerning(a, v) < 0);
     CHECK(font.GetKerning(a, a) == 0);
+}
+
+//-------------------------------------
+TEST_CASE("Font backends read the same kerning") {
+    // The italic font has kerning in both GPOS and 'kern'.
+    for (const char *fontPath : { Test::kFontPath, Test::kItalicFontPath }) {
+        CAPTURE(fontPath);
+        Inspectable<FontSTB> stb(fontPath);
+        Inspectable<FontSFT> sft(fontPath);
+        int                  kernedPairs = 0;
+        for (uint32_t left = 32; left < 127; ++left) {
+            for (uint32_t right = 32; right < 127; ++right) {
+                CAPTURE(left);
+                CAPTURE(right);
+                const int kerning = stb.GetKerning(stb.GetCodePointGlyph(left), stb.GetCodePointGlyph(right));
+                CHECK(kerning == sft.GetKerning(sft.GetCodePointGlyph(left), sft.GetCodePointGlyph(right)));
+                kernedPairs += (kerning != 0) ? 1 : 0;
+            }
+        }
+        CHECK(kernedPairs > 100);
+    }
 }

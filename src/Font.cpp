@@ -268,6 +268,22 @@ Font::GetScaledKerning(int glyph, uint32_t nextCodePoint, float scale) {
 
 //-------------------------------------
 int
+Font::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
+    const uint64_t key = (uint64_t(leftGlyph) << 32) | uint64_t(rightGlyph);
+
+    auto it = mKerningData.find(key);
+    if (it == mKerningData.end()) {
+        // As in HarfBuzz, GPOS wins over the 'kern' table. Fonts keep 'kern' for old software,
+        // and it often has only part of the pairs, because it cannot store classes of glyphs.
+        const int kerning = mGposKerning.HasKerning() ? mGposKerning.GetKerning(leftGlyph, rightGlyph) : GetKernTableKerning(leftGlyph, rightGlyph);
+        it = mKerningData.insert({ key, kerning }).first;
+    }
+
+    return it->second;
+}
+
+//-------------------------------------
+int
 Font::ApplyAntialias(std::unique_ptr<uint8_t[]> &pixels, int &width, int &height) {
     assert(width > 0 && height > 0);
     if(mUseAntialias == false) {

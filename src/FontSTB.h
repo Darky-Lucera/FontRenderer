@@ -20,8 +20,7 @@ namespace MindShake {
             explicit                    FontSTB(const char *fontName);
 
         protected:
-            void                        GetKerningTable();
-            int                         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
+            int                         GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
 
             const CodePointData &       GetCodePointData(uint32_t index) override;
             const CodePointHeightData & GetCodePointDataForHeight(uint32_t index, uint8_t height) override;

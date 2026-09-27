@@ -54,6 +54,14 @@ For getting the font glyphs the following libraries are used:
 - The rasterizer keeps its cells on the heap. Upstream reserves 256 KB of stack for them on every glyph, which overflows the default 64 KB stack of Emscripten.
 - It builds with DJGPP (DOS). `getu32` has the same return type in its declaration and in its definition, and `sft_loadfile` always fails because DOS cannot map files. FontSFT uses `sft_loadmem`, so this does not affect it.
 
+## Kerning
+
+Both backends read the kerning of pairs of glyphs from the `kern` feature of the OpenType `GPOS` table with `GposKerning`. stb_truetype only reads part of `GPOS`, and libschrift does not read it. `GposKerning` reads pair adjustments in both formats and with any value format, also inside extension lookups, in `GPOS` 1.0 and 1.1. As in HarfBuzz, a font without that kerning uses its `kern` table instead.
+
+FontRenderer does not know the script of the text, and a font can kern the same pair differently in each script. `GposKerning` uses the first script whose kerning has the pair: Latin, then the default script, then the rest in the order of the font.
+
+Kerning that depends on more than two glyphs needs a text shaper like HarfBuzz, so FontRenderer does not apply it.
+
 ## Platforms
 
 Tested on Windows, Linux, the web (Emscripten) and DOS (DJGPP, in DOSBox-X). It also builds for Android. macOS and iOS use the same POSIX code, but they are not tested.
@@ -71,6 +79,8 @@ You have two options:
 
   - Font.h
   - Font.cpp
+  - GposKerning.h
+  - GposKerning.cpp
   - MappedFile.h
   - MappedFile.cpp
   - SkylineBinPack.h

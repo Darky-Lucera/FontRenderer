@@ -7,6 +7,7 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
+#include "GposKerning.h"
 #include "MappedFile.h"
 #include "SkylineBinPack.h"
 //-------------------------------------
@@ -176,6 +177,8 @@ namespace MindShake {
             float                       GetScaleForHeight(uint8_t height)   { return GetDataForHeight(height).scale;    }
             uint32_t                    GetCodePointGlyph(uint32_t index)   { return GetCodePointData(index).glyph;     }
             float                       GetScaledKerning(int glyph, uint32_t nextCodePoint, float scale);
+            // In font units.
+            int                         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph);
             // Returns how many pixels the glyph grew on each side.
             int                         ApplyAntialias(std::unique_ptr<uint8_t[]> &pixels, int &width, int &height);
             void                        AABlock(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
@@ -183,7 +186,8 @@ namespace MindShake {
             const HeightData &          GetDataForHeight(uint8_t height);
 
         protected:
-            virtual int                         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) = 0;
+            // Only used when GposKerning has nothing to read.
+            virtual int                         GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) = 0;
 
             virtual const CodePointData &       GetCodePointData(uint32_t index) = 0;
             virtual const CodePointHeightData & GetCodePointDataForHeight(uint32_t index, uint8_t height) = 0;
@@ -200,6 +204,7 @@ namespace MindShake {
             MapHeightData          mHeightData;
             MapCodePointData       mCodePointData;
             MapCodePointHeightData mCodePointHeightData;
+            GposKerning            mGposKerning;    // Points into mFontFile
             MapKerning             mKerningData;
 
             int32_t                mLeft   { -0xffff };

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(FontRenderer VERSION 0.3.1)
+project(FontRenderer VERSION 0.4.0)
 
 # Options
 #--------------------------------------
@@ -22,15 +22,19 @@ if(FONTRENDERER_BUILD_EXAMPLES)
     add_subdirectory("dependencies/minifb" EXCLUDE_FROM_ALL)
 endif()
 
-# C++ version
+# C/C++ version
 #--------------------------------------
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 # DJGPP headers only declare POSIX functions like stat in GNU mode.
 if(DJGPP)
     set(CMAKE_CXX_EXTENSIONS ON)
+    set(CMAKE_C_EXTENSIONS ON)
 else()
     set(CMAKE_CXX_EXTENSIONS OFF)
+    set(CMAKE_C_EXTENSIONS OFF)
 endif()
 
 # Set output directory
@@ -101,6 +105,8 @@ set(SRC_FontRenderer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSFT.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontSTB.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/GposKerning.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/GposKerning.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MappedFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MappedFile.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.cpp
@@ -163,6 +169,7 @@ if(FONTRENDERER_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFont.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFontC.c
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFontC.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testGposKerning.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testSkylineBinPack.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testUTF8.cpp
     )

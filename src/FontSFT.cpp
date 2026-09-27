@@ -32,6 +32,8 @@ FontSFT::FontSFT(const char *fontName) : Font(fontName) {
 
     GetFontVMetrics();
 
+    mGposKerning.Load(mFontFile.GetData(), mFontFile.GetSize());
+
     mStatus = EStatus::Ok;
 }
 
@@ -161,21 +163,13 @@ FontSFT::GetCodePointDataForHeight(uint32_t index, uint8_t height) {
 
 //-------------------------------------
 int
-FontSFT::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
-    const uint64_t key = (uint64_t(leftGlyph) << 32) | uint64_t(rightGlyph);
+FontSFT::GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
+    SFT sft {};
+    sft.xScale = mUnitsPerEm;
+    sft.yScale = sft.xScale;
+    sft.font   = mFont.get();
+    sft.flags  = SFT_DOWNWARD_Y;
 
-    auto it = mKerningData.find(key);
-    if(it == mKerningData.end()) {
-        SFT sft {};
-        sft.xScale = mUnitsPerEm;
-        sft.yScale = sft.xScale;
-        sft.font   = mFont.get();
-        sft.flags  = SFT_DOWNWARD_Y;
-
-        SFT_Kerning kerning {};
-        const int32_t advance = (sft_kerning(&sft, leftGlyph, rightGlyph, &kerning) < 0) ? 0 : int32_t(kerning.xShift);
-        it = mKerningData.insert({ key, advance }).first;
-    }
-
-    return it->second;
+    SFT_Kerning kerning {};
+    return (sft_kerning(&sft, leftGlyph, rightGlyph, &kerning) < 0) ? 0 : int(kerning.xShift);
 }
