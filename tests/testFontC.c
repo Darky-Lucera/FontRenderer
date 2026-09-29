@@ -34,11 +34,22 @@ fr_test_c_api(const char *font_name, fr_font_backend backend) {
     CHECK_C(fr_font_set_size_mode(font, FR_FONT_SIZE_MODE_EM_SIZE) == FR_STATUS_OK);
     CHECK_C(fr_font_get_size_mode(font) == FR_FONT_SIZE_MODE_EM_SIZE);
     CHECK_C(fr_font_set_size_mode(font, FR_FONT_SIZE_MODE_LINE_HEIGHT) == FR_STATUS_OK);
-    CHECK_C(fr_font_set_glyph_padding(font, 2) == FR_STATUS_OK);
-    CHECK_C(fr_font_get_glyph_padding(font) == 2);
-    CHECK_C(fr_font_set_glyph_padding(font, fr_font_get_texture_height(font)) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK_C(fr_font_get_texture_format(font) == FR_FONT_TEXTURE_FORMAT_ALPHA8);
+    CHECK_C(fr_font_set_glyph_spacing(font, 2) == FR_STATUS_OK);
+    CHECK_C(fr_font_get_glyph_spacing(font) == 2);
+    CHECK_C(fr_font_set_glyph_spacing(font, fr_font_get_texture_height(font)) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK_C(fr_font_set_glyph_padding(font, 1, 2, 3, 4) == FR_STATUS_OK);
+    CHECK_C(fr_font_get_glyph_padding_left(font) == 1);
+    CHECK_C(fr_font_get_glyph_padding_top(font) == 2);
+    CHECK_C(fr_font_get_glyph_padding_right(font) == 3);
+    CHECK_C(fr_font_get_glyph_padding_bottom(font) == 4);
+    CHECK_C(fr_font_set_glyph_padding(font, FR_FONT_MAX_TEXTURE_SIZE, 0, 0, 0) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK_C(fr_font_get_glyph_padding_left(font) == 1);
     CHECK_C(fr_font_set_packing_heuristic(font, FR_FONT_PACKING_LEVEL_MIN_WASTE_FIT) == FR_STATUS_OK);
     CHECK_C(fr_font_get_packing_heuristic(font) == FR_FONT_PACKING_LEVEL_MIN_WASTE_FIT);
+    CHECK_C(fr_font_get_allow_rotation(font));
+    CHECK_C(fr_font_set_allow_rotation(font, false) == FR_STATUS_OK);
+    CHECK_C(!fr_font_get_allow_rotation(font));
 
     CHECK_C(fr_font_set_antialias(font, true) == FR_STATUS_OK);
     CHECK_C(fr_font_get_antialias(font));

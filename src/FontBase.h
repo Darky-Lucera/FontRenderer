@@ -32,7 +32,7 @@ namespace MindShake {
     struct CodePointHeightData {
         using Rect = MindShake::SkylineBinPack::Rect;
 
-        int     glyph;             // It's convenient
+        int     glyph;              // It's convenient
         float   advanceWidth;       // Kept fractional so the pen position does not accumulate rounding errors
         int     leftSideBearing;
         int     x, y;
@@ -93,7 +93,14 @@ namespace MindShake {
                 CannotReadFile,
                 InvalidFont,
                 OutOfMemory,
-                CannotWriteFile
+                CannotWriteFile,
+                InvalidTexture      // FontBaked cannot read the texture, or its size is not the one in the metrics file
+            };
+
+            //-------------------------
+            enum class ETextureFormat : int8_t {
+                Alpha8,             // One byte of coverage per texel, drawn with the color of the text
+                BGRA32              // Four bytes per texel: blue, green, red and alpha, not premultiplied, as Color32
             };
 
             // Most GPUs cannot allocate bigger textures.
@@ -109,8 +116,11 @@ namespace MindShake {
             EStatus                     GetStatus() const                   { return mStatus;                           }
 
             const std::string &         GetFontName() const                 { return mFontName;                         }
-            // One byte of coverage per texel, in rows of GetTextureWidth bytes. nullptr if the font has no copy of the texture.
+
+            // Rows of GetTextureWidth texels, in the format GetTextureFormat gives. nullptr if the font has no copy of the texture.
             const uint8_t *             GetTexture() const                  { return mTexture.empty() ? nullptr : mTexture.data(); }
+            // Font always renders Alpha8. Only FontBaked can have a BGRA32 texture.
+            ETextureFormat              GetTextureFormat() const            { return mTextureFormat;                    }
             uint32_t                    GetTextureWidth() const             { return mTextureWidth;                     }
             uint32_t                    GetTextureHeight() const            { return mTextureHeight;                    }
             // Size of the top-left area of the texture that holds glyphs, to save a cropped atlas. 0 if it is empty.
@@ -120,6 +130,7 @@ namespace MindShake {
             uint32_t                    GetTextureVersion() const           { return mTextureVersion;                   }
 
             // DrawText does not know the size of dst: without SetClipping the text has to fit inside it.
+            // With a BGRA32 texture, the color of each texel is multiplied by color, as a GPU does with the color of a vertex.
             void                        DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_t *dst, uint32_t dstStride, int32_t posX, int32_t posY);
             // Box covering every glyph DrawText would draw, relative to the position passed to it.
             // A text with nothing to draw, like an empty one, gives an empty box.
@@ -139,6 +150,7 @@ namespace MindShake {
             static uint32_t             GetCodePointHeightKey(uint32_t codePoint, uint8_t height);
             static uint64_t             GetKerningKey(uint32_t leftGlyph, uint32_t rightGlyph);
             static EStatus              GetFileStatus(MappedFile::EError error);
+            static uint32_t             GetBytesPerTexel(ETextureFormat format) { return (format == ETextureFormat::BGRA32) ? 4 : 1; }
 
             // Only what DrawText uses: the heights, the glyphs, and the kerning between the glyphs.
             EStatus                     SaveMetrics(const char *fileName, uint32_t textureWidth, uint32_t textureHeight) const;
@@ -155,6 +167,7 @@ namespace MindShake {
         protected:
             std::string            mFontName;
             std::vector<uint8_t>   mTexture;
+            ETextureFormat         mTextureFormat  { ETextureFormat::Alpha8 };
             uint32_t               mTextureWidth   {};
             uint32_t               mTextureHeight  {};
             uint32_t               mTextureVersion {};

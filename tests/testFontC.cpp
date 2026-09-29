@@ -88,6 +88,11 @@ TEST_CASE("Font C API rejects invalid handles and options") {
     CHECK(fr_font_get_packing_heuristic(nullptr) == FR_FONT_PACKING_INVALID);
     CHECK(fr_font_get_name(nullptr) == nullptr);
     CHECK(fr_font_get_texture(nullptr) == nullptr);
+    CHECK(fr_font_get_texture_format(nullptr) == FR_FONT_TEXTURE_FORMAT_INVALID);
+    CHECK(fr_font_set_glyph_spacing(nullptr, 1) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_set_glyph_padding(nullptr, 1, 1, 1, 1) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_set_allow_rotation(nullptr, true) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_get_allow_rotation(nullptr) == false);
 
     fr_rect box { 1, 2, 3, 4 };
     CHECK(fr_font_get_text_box(nullptr, "x", 16, &box) == FR_STATUS_INVALID_ARGUMENT);
@@ -181,16 +186,21 @@ TEST_CASE("Font C API saves and loads baked fonts") {
     CHECK(fr_font_save_baked(baked, kMetricsPath, kTexturePath) == FR_STATUS_INVALID_BACKEND);
     CHECK(fr_font_set_texture_growth(baked, FR_FONT_TEXTURE_GROWTH_BOTH) == FR_STATUS_INVALID_BACKEND);
     CHECK(fr_font_set_size_mode(baked, FR_FONT_SIZE_MODE_EM_SIZE) == FR_STATUS_INVALID_BACKEND);
-    CHECK(fr_font_set_glyph_padding(baked, 2) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_set_glyph_spacing(baked, 2) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_set_glyph_padding(baked, 1, 1, 1, 1) == FR_STATUS_INVALID_BACKEND);
     CHECK(fr_font_set_packing_heuristic(baked, FR_FONT_PACKING_LEVEL_MIN_WASTE_FIT) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_set_allow_rotation(baked, false) == FR_STATUS_INVALID_BACKEND);
     CHECK(fr_font_set_antialias(baked, true) == FR_STATUS_INVALID_BACKEND);
     CHECK(fr_font_set_antialias_allow_ex(baked, true) == FR_STATUS_INVALID_BACKEND);
     CHECK(fr_font_set_antialias_weights(baked, 1, 1, 1) == FR_STATUS_INVALID_BACKEND);
     CHECK(fr_font_ft_set_hinting(baked, FR_FONT_FT_HINTING_LIGHT) == FR_STATUS_INVALID_BACKEND);
     CHECK(fr_font_get_texture_growth(baked) == FR_FONT_TEXTURE_GROWTH_INVALID);
     CHECK(fr_font_get_size_mode(baked) == FR_FONT_SIZE_MODE_INVALID);
-    CHECK(fr_font_get_glyph_padding(baked) == 0);
+    CHECK(fr_font_get_glyph_spacing(baked) == 0);
+    CHECK(fr_font_get_glyph_padding_left(baked) == 0);
     CHECK(fr_font_get_packing_heuristic(baked) == FR_FONT_PACKING_INVALID);
+    CHECK(fr_font_get_allow_rotation(baked) == false);
+    CHECK(fr_font_get_texture_format(baked) == FR_FONT_TEXTURE_FORMAT_ALPHA8);
     CHECK(fr_font_get_antialias(baked) == false);
     CHECK(fr_font_get_antialias_allow_ex(baked) == false);
     CHECK(fr_font_get_antialias_center(baked) == 0);
@@ -198,14 +208,18 @@ TEST_CASE("Font C API saves and loads baked fonts") {
     fr_font        *gpu   = nullptr;
     const uint32_t width  = fr_font_get_texture_width(baked);
     const uint32_t height = fr_font_get_texture_height(baked);
-    REQUIRE(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width, height, &gpu) == FR_STATUS_OK);
+    REQUIRE(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width, height, FR_FONT_TEXTURE_FORMAT_BGRA32, &gpu) == FR_STATUS_OK);
     CHECK(fr_font_get_texture(gpu) == nullptr);
+    CHECK(fr_font_get_texture_format(gpu) == FR_FONT_TEXTURE_FORMAT_BGRA32);
     size_t count = 0;
     CHECK(fr_font_get_glyph_quads(gpu, "Hello", 24, nullptr, 0, &count) == FR_STATUS_OK);
     CHECK(count == 5);
     fr_font_destroy(gpu);
 
-    CHECK(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width + 1, height, &gpu) == FR_STATUS_INVALID_FONT);
+    CHECK(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width + 1, height, FR_FONT_TEXTURE_FORMAT_ALPHA8, &gpu) == FR_STATUS_INVALID_TEXTURE);
+    CHECK(gpu == nullptr);
+    CHECK(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width, height, 2, &gpu) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width, height, FR_FONT_TEXTURE_FORMAT_INVALID, &gpu) == FR_STATUS_INVALID_ARGUMENT);
     CHECK(gpu == nullptr);
 
     fr_font_destroy(baked);
@@ -221,7 +235,7 @@ TEST_CASE("Font C API reports baked font errors") {
     CHECK(fr_font_create_baked(nullptr, kTexturePath, &font) == FR_STATUS_INVALID_ARGUMENT);
     CHECK(fr_font_create_baked(kMetricsPath, nullptr, &font) == FR_STATUS_INVALID_ARGUMENT);
     CHECK(fr_font_create_baked(kMetricsPath, kTexturePath, nullptr) == FR_STATUS_INVALID_ARGUMENT);
-    CHECK(fr_font_create_baked_with_texture(nullptr, nullptr, 1, 1, &font) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_create_baked_with_texture(nullptr, nullptr, 1, 1, FR_FONT_TEXTURE_FORMAT_ALPHA8, &font) == FR_STATUS_INVALID_ARGUMENT);
     CHECK(fr_font_create_baked("this-file-does-not-exist.frb", kTexturePath, &font) == FR_STATUS_CANNOT_OPEN_FILE);
     CHECK(font == nullptr);
 
@@ -247,7 +261,7 @@ TEST_CASE("Font C API reports baked font errors") {
 TEST_CASE("Font C API rejects baked fonts without the baked backend") {
     fr_font *font = nullptr;
     CHECK(fr_font_create_baked(MindShake::Test::kMetricsPath, MindShake::Test::kTexturePath, &font) == FR_STATUS_INVALID_BACKEND);
-    CHECK(fr_font_create_baked_with_texture(MindShake::Test::kMetricsPath, nullptr, 1, 1, &font) == FR_STATUS_INVALID_BACKEND);
+    CHECK(fr_font_create_baked_with_texture(MindShake::Test::kMetricsPath, nullptr, 1, 1, FR_FONT_TEXTURE_FORMAT_ALPHA8, &font) == FR_STATUS_INVALID_BACKEND);
     CHECK(font == nullptr);
 }
 #endif

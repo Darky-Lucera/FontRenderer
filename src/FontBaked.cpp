@@ -26,11 +26,11 @@ FontBaked::FontBaked(const char *metricsFile, const char *textureFile) : FontBas
 }
 
 //-------------------------------------
-FontBaked::FontBaked(const char *metricsFile, const uint8_t *texture, uint32_t width, uint32_t height) : FontBase(metricsFile) {
+FontBaked::FontBaked(const char *metricsFile, const uint8_t *texture, uint32_t width, uint32_t height, ETextureFormat format) : FontBase(metricsFile) {
     try {
         mStatus = LoadGlyphs(metricsFile);
         if(mStatus == EStatus::Ok) {
-            mStatus = SetTexture(texture, width, height);
+            mStatus = SetTexture(texture, width, height, format);
         }
     }
     catch(const std::bad_alloc &) {
@@ -71,24 +71,25 @@ FontBaked::LoadTexture(const char *textureFile) {
     }
 
     std::vector<uint8_t> pixels;
-    uint32_t             width, height;
-    if(ReadTga(file.GetData(), file.GetSize(), pixels, width, height) == false) {
-        return EStatus::InvalidFont;
+    uint32_t             width, height, channels;
+    if(ReadTga(file.GetData(), file.GetSize(), pixels, width, height, channels) == false) {
+        return EStatus::InvalidTexture;
     }
 
-    return SetTexture(pixels.data(), width, height);
+    return SetTexture(pixels.data(), width, height, (channels == 4) ? ETextureFormat::BGRA32 : ETextureFormat::Alpha8);
 }
 
 //-------------------------------------
 FontBaked::EStatus
-FontBaked::SetTexture(const uint8_t *texture, uint32_t width, uint32_t height) {
+FontBaked::SetTexture(const uint8_t *texture, uint32_t width, uint32_t height, ETextureFormat format) {
     // The glyphs were checked against the size in the metrics file.
     if(width != mTextureWidth || height != mTextureHeight) {
-        return EStatus::InvalidFont;
+        return EStatus::InvalidTexture;
     }
 
+    mTextureFormat = format;
     if(texture != nullptr) {
-        mTexture.assign(texture, texture + size_t(width) * height);
+        mTexture.assign(texture, texture + size_t(width) * height * GetBytesPerTexel(format));
     }
 
     return EStatus::Ok;

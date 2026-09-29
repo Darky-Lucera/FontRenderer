@@ -104,6 +104,31 @@ namespace {
         return (fclose(file) == 0) && written;
     }
 
+    //---------------------------------
+    inline void
+    Blend(Color32 &pixel, uint32_t red, uint32_t green, uint32_t blue, uint32_t alpha) {
+        const uint32_t inverse = 255 - alpha;
+        pixel.b = uint8_t((blue  * alpha + pixel.b * inverse) / 255);
+        pixel.g = uint8_t((green * alpha + pixel.g * inverse) / 255);
+        pixel.r = uint8_t((red   * alpha + pixel.r * inverse) / 255);
+        pixel.a = 255;
+    }
+
+    // Calls blend(texel, pixel) for each texel of a glyph, from offset, and the pixel of dst it goes to.
+    //---------------------------------
+    template <size_t kBytesPerTexel, class TBlend>
+    void
+    DrawTexels(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+               uint32_t *dst, uint32_t dstStride, TBlend blend) {
+        for(int32_t y = 0; y < height; ++y, offset += stepY) {
+            uint32_t *row   = &dst[size_t(y) * dstStride];
+            size_t   texel  = offset;
+            for(int32_t x = 0; x < width; ++x, texel += stepX) {
+                blend(&texture[texel * kBytesPerTexel], *reinterpret_cast<Color32 *>(&row[x]));
+            }
+        }
+    }
+
 } // end of namespace
 
 //-------------------------------------
@@ -235,27 +260,27 @@ FontBase::DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_
         }
 
         // Let's draw
-        const uint32_t textureWidth  = mTextureWidth;
-        const uint32_t stepX         = data.rotated ? textureWidth : 1;
-        const uint32_t stepY         = data.rotated ? 1 : textureWidth;
-        uint32_t       offsetTexture = data.rect.y * textureWidth + data.rect.x + minY * stepY + minX * stepX;
-        uint32_t       offsetDst     = currentY * dstStride + currentX;
-        for(int glyphY=minY; glyphY<maxY; ++glyphY) {
-            uint32_t texel = offsetTexture;
-            for(int glyphX=minX, dstX=0; glyphX<maxX; ++glyphX, ++dstX, texel += stepX) {
-                if(mTexture[texel] != 0) {
-                    uint32_t grey    = uint32_t((mTexture[texel] * fontColor.a) / 255);
-                    uint32_t invGrey = 255 - grey;
-
-                    Color32  &dstColor = *reinterpret_cast<Color32 *>(&dst[offsetDst + dstX]);
-                    dstColor.b = ((fontColor.b * grey) + (dstColor.b * invGrey)) / 255;
-                    dstColor.g = ((fontColor.g * grey) + (dstColor.g * invGrey)) / 255;
-                    dstColor.r = ((fontColor.r * grey) + (dstColor.r * invGrey)) / 255;
-                    dstColor.a = 255;
+        const size_t textureWidth  = mTextureWidth;
+        const size_t stepX         = data.rotated ? textureWidth : 1;
+        const size_t stepY         = data.rotated ? 1 : textureWidth;
+        const size_t offsetTexture = size_t(data.rect.y) * textureWidth + size_t(data.rect.x) + size_t(minY) * stepY + size_t(minX) * stepX;
+        uint32_t     *dstGlyph     = &dst[size_t(currentY) * dstStride + size_t(currentX)];
+        if(mTextureFormat == ETextureFormat::Alpha8) {
+            DrawTexels<1>(mTexture.data(), offsetTexture, stepX, stepY, maxX - minX, maxY - minY, dstGlyph, dstStride,
+                          [fontColor](const uint8_t *texel, Color32 &pixel) {
+                if(texel[0] != 0) {
+                    Blend(pixel, fontColor.r, fontColor.g, fontColor.b, (texel[0] * fontColor.a) / 255);
                 }
-            }
-            offsetTexture += stepY;
-            offsetDst     += dstStride;
+            });
+        }
+        else {
+            DrawTexels<4>(mTexture.data(), offsetTexture, stepX, stepY, maxX - minX, maxY - minY, dstGlyph, dstStride,
+                          [fontColor](const uint8_t *texel, Color32 &pixel) {
+                if(texel[3] != 0) {
+                    Blend(pixel, (texel[2] * fontColor.r) / 255, (texel[1] * fontColor.g) / 255, (texel[0] * fontColor.b) / 255,
+                          (texel[3] * fontColor.a) / 255);
+                }
+            });
         }
     });
 }

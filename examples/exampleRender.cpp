@@ -176,22 +176,8 @@ RenderAtlas(const MindShake::FontBase &font, MindShake::FontBase &textFont, cons
     textFont.DrawText(label, 14, kStatusColor, g_screen.buffer, g_screen.width, left, top);
     top += 22;
 
-    // The checkerboard shows which texels are empty. A texture bigger than the panel is cropped.
-    const uint8_t *texels       = font.GetTexture();
-    const int32_t textureWidth  = int32_t(font.GetTextureWidth());
-    const int32_t shownRight    = std::min(right, left + textureWidth);
-    const int32_t shownBottom   = std::min(bottom, top + int32_t(font.GetTextureHeight()));
-    for (int32_t y = std::max(top, int32_t(0)); y < shownBottom; ++y) {
-        uint32_t *row = &g_screen.buffer[size_t(y) * g_screen.width];
-        for (int32_t x = left; x < shownRight; ++x) {
-            const int32_t texelX = x - left;
-            const int32_t texelY = y - top;
-            const uint32_t square = ((texelX / 8 + texelY / 8) % 2 != 0) ? 0xff383838 : 0xff4a4a4a;
-            row[x] = example_blend(square, 0xffffffff, texels[size_t(texelY) * size_t(textureWidth) + size_t(texelX)]);
-        }
-    }
-
-    example_draw_box(left - 1, top - 1, shownRight - left + 2, shownBottom - top + 2);
+    const bool bgra = font.GetTextureFormat() == MindShake::FontBase::ETextureFormat::BGRA32;
+    example_draw_texture(font.GetTexture(), bgra, int32_t(font.GetTextureWidth()), int32_t(font.GetTextureHeight()), left, top, right, bottom);
 }
 
 //-------------------------------------

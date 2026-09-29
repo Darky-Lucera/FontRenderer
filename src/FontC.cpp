@@ -49,6 +49,9 @@ static_assert(FR_FONT_TEXTURE_GROWTH_BOTH   == int(MindShake::Font::ETextureGrow
 static_assert(FR_FONT_SIZE_MODE_LINE_HEIGHT == int(MindShake::Font::ESizeMode::LineHeight), "fr_font_size_mode must match Font::ESizeMode");
 static_assert(FR_FONT_SIZE_MODE_EM_SIZE     == int(MindShake::Font::ESizeMode::EmSize),     "fr_font_size_mode must match Font::ESizeMode");
 
+static_assert(FR_FONT_TEXTURE_FORMAT_ALPHA8 == int(MindShake::FontBase::ETextureFormat::Alpha8), "fr_font_texture_format must match FontBase::ETextureFormat");
+static_assert(FR_FONT_TEXTURE_FORMAT_BGRA32 == int(MindShake::FontBase::ETextureFormat::BGRA32), "fr_font_texture_format must match FontBase::ETextureFormat");
+
 static_assert(FR_FONT_PACKING_LEVEL_BOTTOM_LEFT   == int(MindShake::Font::ELevelChoiceHeuristic::LevelBottomLeft),  "fr_font_packing_heuristic must match Font::ELevelChoiceHeuristic");
 static_assert(FR_FONT_PACKING_LEVEL_MIN_WASTE_FIT == int(MindShake::Font::ELevelChoiceHeuristic::LevelMinWasteFit), "fr_font_packing_heuristic must match Font::ELevelChoiceHeuristic");
 
@@ -96,6 +99,9 @@ namespace {
 
             case EStatus::CannotWriteFile:
                 return FR_STATUS_CANNOT_WRITE_FILE;
+
+            case EStatus::InvalidTexture:
+                return FR_STATUS_INVALID_TEXTURE;
         }
 
         return FR_STATUS_INTERNAL_ERROR;
@@ -300,22 +306,37 @@ fr_font_create_baked(const char *metrics_file, const char *texture_file, fr_font
 //-------------------------------------
 fr_status
 fr_font_create_baked_with_texture(const char *metrics_file, const uint8_t *texture, uint32_t width, uint32_t height,
-                                  fr_font **out_font) {
+                                  fr_font_texture_format format, fr_font **out_font) {
     if(out_font == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
     *out_font = nullptr;
+
+    MindShake::FontBase::ETextureFormat value;
+    switch(format) {
+        case FR_FONT_TEXTURE_FORMAT_ALPHA8:
+            value = MindShake::FontBase::ETextureFormat::Alpha8;
+            break;
+
+        case FR_FONT_TEXTURE_FORMAT_BGRA32:
+            value = MindShake::FontBase::ETextureFormat::BGRA32;
+            break;
+
+        default:
+            return FR_STATUS_INVALID_ARGUMENT;
+    }
 
     if(metrics_file == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
 #if defined(FONTRENDERER_USE_BAKED)
-    return CreateBaked(out_font, [=] { return std::make_unique<MindShake::FontBaked>(metrics_file, texture, width, height); });
+    return CreateBaked(out_font, [=] { return std::make_unique<MindShake::FontBaked>(metrics_file, texture, width, height, value); });
 #else
     (void) texture;
     (void) width;
     (void) height;
+    (void) value;
     return FR_STATUS_INVALID_BACKEND;
 #endif
 }
@@ -380,6 +401,24 @@ fr_font_get_name(const fr_font *font) {
 const uint8_t *
 fr_font_get_texture(const fr_font *font) {
     return (font != nullptr && font->value != nullptr) ? font->value->GetTexture() : nullptr;
+}
+
+//-------------------------------------
+fr_font_texture_format
+fr_font_get_texture_format(const fr_font *font) {
+    if(font == nullptr || font->value == nullptr) {
+        return FR_FONT_TEXTURE_FORMAT_INVALID;
+    }
+
+    switch(font->value->GetTextureFormat()) {
+        case MindShake::FontBase::ETextureFormat::Alpha8:
+            return FR_FONT_TEXTURE_FORMAT_ALPHA8;
+
+        case MindShake::FontBase::ETextureFormat::BGRA32:
+            return FR_FONT_TEXTURE_FORMAT_BGRA32;
+    }
+
+    return FR_FONT_TEXTURE_FORMAT_INVALID;
 }
 
 //-------------------------------------
@@ -499,9 +538,9 @@ fr_font_get_size_mode(const fr_font *font) {
 
 //-------------------------------------
 fr_status
-fr_font_set_glyph_padding(fr_font *font, uint32_t padding) {
+fr_font_set_glyph_spacing(fr_font *font, uint32_t spacing) {
     bool            accepted = false;
-    const fr_status status   = InvokeRasterizer(font, [&](auto &value) { accepted = value.SetGlyphPadding(padding); });
+    const fr_status status   = InvokeRasterizer(font, [&](auto &value) { accepted = value.SetGlyphSpacing(spacing); });
     if(status != FR_STATUS_OK) {
         return status;
     }
@@ -511,9 +550,49 @@ fr_font_set_glyph_padding(fr_font *font, uint32_t padding) {
 
 //-------------------------------------
 uint32_t
-fr_font_get_glyph_padding(const fr_font *font) {
+fr_font_get_glyph_spacing(const fr_font *font) {
     const MindShake::Font *rasterizer = GetRasterizer(font);
-    return (rasterizer != nullptr) ? rasterizer->GetGlyphPadding() : 0;
+    return (rasterizer != nullptr) ? rasterizer->GetGlyphSpacing() : 0;
+}
+
+//-------------------------------------
+fr_status
+fr_font_set_glyph_padding(fr_font *font, uint32_t left, uint32_t top, uint32_t right, uint32_t bottom) {
+    bool            accepted = false;
+    const fr_status status   = InvokeRasterizer(font, [&](auto &value) { accepted = value.SetGlyphPadding(left, top, right, bottom); });
+    if(status != FR_STATUS_OK) {
+        return status;
+    }
+
+    return accepted ? FR_STATUS_OK : FR_STATUS_INVALID_ARGUMENT;
+}
+
+//-------------------------------------
+uint32_t
+fr_font_get_glyph_padding_left(const fr_font *font) {
+    const MindShake::Font *rasterizer = GetRasterizer(font);
+    return (rasterizer != nullptr) ? rasterizer->GetGlyphPaddingLeft() : 0;
+}
+
+//-------------------------------------
+uint32_t
+fr_font_get_glyph_padding_top(const fr_font *font) {
+    const MindShake::Font *rasterizer = GetRasterizer(font);
+    return (rasterizer != nullptr) ? rasterizer->GetGlyphPaddingTop() : 0;
+}
+
+//-------------------------------------
+uint32_t
+fr_font_get_glyph_padding_right(const fr_font *font) {
+    const MindShake::Font *rasterizer = GetRasterizer(font);
+    return (rasterizer != nullptr) ? rasterizer->GetGlyphPaddingRight() : 0;
+}
+
+//-------------------------------------
+uint32_t
+fr_font_get_glyph_padding_bottom(const fr_font *font) {
+    const MindShake::Font *rasterizer = GetRasterizer(font);
+    return (rasterizer != nullptr) ? rasterizer->GetGlyphPaddingBottom() : 0;
 }
 
 //-------------------------------------
@@ -553,6 +632,19 @@ fr_font_get_packing_heuristic(const fr_font *font) {
     }
 
     return FR_FONT_PACKING_INVALID;
+}
+
+//-------------------------------------
+fr_status
+fr_font_set_allow_rotation(fr_font *font, bool allow) {
+    return InvokeRasterizer(font, [allow](auto &value) { value.SetAllowRotation(allow); });
+}
+
+//-------------------------------------
+bool
+fr_font_get_allow_rotation(const fr_font *font) {
+    const MindShake::Font *rasterizer = GetRasterizer(font);
+    return rasterizer != nullptr && rasterizer->GetAllowRotation();
 }
 
 //-------------------------------------

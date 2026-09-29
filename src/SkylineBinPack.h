@@ -58,6 +58,10 @@ namespace MindShake {
             // Only grows the bin. Returns false if any dimension would shrink or is invalid.
             bool        ResizeBin(uint32_t width, uint32_t height);
 
+            // Only affects the rectangles inserted afterwards.
+            void        SetAllowRotation(bool allow)                                { mAllowRotation = allow;  }
+            bool        GetAllowRotation() const                                    { return mAllowRotation;   }
+
             // Inserts a single rectangle into the bin, possibly rotated. Returns an empty rectangle on failure.
             Rect        Insert(uint32_t width, uint32_t height, ELevelChoiceHeuristic method);
 

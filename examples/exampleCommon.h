@@ -37,6 +37,10 @@ void               example_clear(void);
 uint32_t           example_blend(uint32_t dst, uint32_t src, uint32_t alpha);
 void               example_fill_rect(int32_t left, int32_t top, int32_t right, int32_t bottom, uint32_t color, uint32_t alpha);
 void               example_draw_box(int32_t left, int32_t top, int32_t width, int32_t height);
+// Draws a font texture on a checkerboard, which shows the empty texels, cropped to right and bottom.
+// texels has one byte of coverage per texel, or blue, green, red and alpha when bgra is set.
+void               example_draw_texture(const uint8_t *texels, bool bgra, int32_t width, int32_t height,
+                                        int32_t left, int32_t top, int32_t right, int32_t bottom);
 // Only while show_clipping is on.
 void               example_draw_clipping(void);
 

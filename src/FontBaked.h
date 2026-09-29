@@ -26,17 +26,19 @@ namespace MindShake {
     //---------------------------------
     class FontBaked : public FontBase {
         public:
-            // The texture is read from an 8-bit grayscale TGA, like the one Font::SaveBaked writes.
+            // The texture is read from an 8-bit grayscale TGA, like the one Font::SaveBaked writes, which gives an Alpha8
+            // texture, or from a 32-bit TGA with alpha or a 16-bit grayscale TGA with alpha, which give a BGRA32 texture.
+            // A texture it cannot use, like a color TGA without alpha, gives InvalidTexture.
             FontBaked(const char *metricsFile, const char *textureFile);
-            // The texture has one byte per texel, in rows of width bytes, and it is copied. Its size must be the one
-            // Font::SaveBaked saved. Without a texture, for one that is only in the GPU, DrawText draws nothing.
-            FontBaked(const char *metricsFile, const uint8_t *texture, uint32_t width, uint32_t height);
+            // The texture is in rows of width texels, and it is copied. Its size must be the one Font::SaveBaked saved.
+            // Without a texture, for one that is only in the GPU, DrawText draws nothing.
+            FontBaked(const char *metricsFile, const uint8_t *texture, uint32_t width, uint32_t height, ETextureFormat format);
 
         protected:
             // LoadMetrics, and the glyph of each code point, which GetCodePointGlyph needs.
             EStatus                     LoadGlyphs(const char *metricsFile);
             EStatus                     LoadTexture(const char *textureFile);
-            EStatus                     SetTexture(const uint8_t *texture, uint32_t width, uint32_t height);
+            EStatus                     SetTexture(const uint8_t *texture, uint32_t width, uint32_t height, ETextureFormat format);
 
             const HeightData &          GetDataForHeight(uint8_t height) override;
             const CodePointHeightData & GetCodePointDataForHeight(uint32_t codePoint, uint8_t height) override;

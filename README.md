@@ -29,15 +29,18 @@ font.SetAntialiasWeights(1, 1, 1);  // Mean
 // Allow antialias to extend one border pixel per glyph
 font.SetAntialiasAllowEx(true);
 
+// Empty pixels between the glyphs in the texture, so that bilinear filtering does not mix neighbouring glyphs (1 by default)
+font.SetGlyphSpacing(1);
+
 // In case you need the dimensions of the future rendered text. For instance to horizontal align text...
-Rect rect;
+MindShake::FontBase::Rect rect;
 font.GetTextBox(text, fontSize, &rect);
 
 // Draw a colored text of height fontSize in your buffer at pos (posX, posY)
 font.DrawText(text, fontSize, color32, bufferDest, bufferDestStride, posX, posY);
 ```
 
-**Note**: Each glyph is rendered only once per fontSize, so changing any antialias setting discards the glyphs already rendered.
+**Note**: Each glyph is rendered only once per fontSize, so changing any antialias setting, the glyph spacing or the glyph padding discards the glyphs already rendered.
 
 ### Classes
 
@@ -77,15 +80,58 @@ font.DrawText("Hello", 16, color32, bufferDest, bufferDestStride, posX, posY);
 `SaveBaked` writes two files:
 
 - The metrics file has the metrics of each height, the position of each glyph in the texture, and the kerning. It is a little-endian binary file, so it works the same on every platform.
-- The texture is an 8-bit grayscale TGA compressed with RLE, which most image programs read. It only has the used area of the texture. `FontBaked` reads it compressed or not, with its rows from the top down or from the bottom up.
+- The texture is an 8-bit grayscale TGA compressed with RLE, which most image programs read. It only has the used area of the texture. `FontBaked` reads it compressed or not, with its rows from the top down or from the bottom up. It also reads a TGA with alpha, see [Adding effects to the texture](#adding-effects-to-the-texture).
 
-You can convert the texture to another format, like PNG, and decode it yourself. Then pass the pixels to `FontBaked(metricsFile, texture, width, height)`. The size must be the same. If the texture is only in the GPU, pass `nullptr`: `DrawText` then draws nothing, but `GetGlyphQuads` still works.
+You can convert the texture to another format, like PNG, and decode it yourself. Then pass the pixels to `FontBaked(metricsFile, texture, width, height, format)`, with `ETextureFormat::Alpha8` for one byte per texel or `ETextureFormat::BGRA32` for four: blue, green, red and alpha. The size must be the same. If the texture is only in the GPU, pass `nullptr`: `DrawText` then draws nothing, but `GetGlyphQuads` still works.
+
+### Adding effects to the texture
+
+You can add effects to the saved texture with an image program, like a shadow, an outline or a gradient, and `FontBaked` draws them:
+
+1. Before rendering the glyphs, leave room for the effects with `SetGlyphPadding(left, top, right, bottom)`. These empty pixels are part of each glyph, so `DrawText`, `GetTextBox` and `GetGlyphQuads` include them. For example, a shadow 3 pixels to the right and 3 pixels down needs `SetGlyphPadding(0, 0, 3, 3)`.
+2. If an effect is not symmetric about the diagonal, like a vertical gradient or a shadow that goes further right than down, call `SetAllowRotation(false)` too. The packer can rotate a glyph to fit it better, and it stores a rotated glyph transposed, so such an effect would look wrong on it.
+3. Save the font with `SaveBaked`, add the effects to the texture, with an image program or with a script like the one in [the effects example](#the-effects-example), and save it as a 32-bit TGA with alpha, compressed or not. The alpha must cover the text and its effects. Some programs save the alpha of a TGA from a separate alpha channel, not from the transparency of the layer, so check which one yours uses.
+
+`FontBaked` reads the 32-bit TGA as a `BGRA32` texture, which `GetTextureFormat` gives. It also reads a 16-bit grayscale TGA with alpha, as a `BGRA32` texture with the gray in blue, green and red. The texture keeps its alpha straight, not premultiplied: an alpha that the TGA 2.0 extension area marks as premultiplied is converted when the file is read.
+
+A TGA can say that it has no alpha. Some programs write an alpha without saying it, so `FontBaked` still uses the alpha if it changes from pixel to pixel. If it is the same in every pixel, there is no text in it, and `FontBaked` gives `EStatus::InvalidTexture`. It gives the same status for a color TGA with 24 bits, and for a texture whose size is not the one in the metrics file.
+
+`DrawText` multiplies the color of each texel by the color of the text, as a GPU does with the color of a vertex. So white text keeps the colors of the texture, and a white glyph with a black outline, drawn in red, is red with a black outline.
+
+```cpp
+MindShake::FontSTB font("resources/Roboto-Regular.ttf");
+font.SetGlyphPadding(2, 2, 5, 5);
+font.SetAllowRotation(false);
+font.Preload(u8"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?", 32);
+font.LoadAllKerningPairs();
+font.SaveBaked("roboto.frb", "roboto.tga");
+
+// Later, after adding the effects to roboto.tga and saving it with 32 bits:
+MindShake::FontBaked baked("roboto.frb", "roboto.tga");
+baked.DrawText("Hello", 32, 0xffffffff, bufferDest, bufferDestStride, posX, posY);
+```
+
+The glyph spacing, set with `SetGlyphSpacing`, is a different thing: the empty pixels between the glyphs in the texture, so that bilinear filtering does not mix neighbouring glyphs. It is not part of any glyph, so an effect must not use it.
+
+### The effects example
+
+Two programs and a script show the whole process, with the font [Lilita One](https://fonts.google.com/specimen/Lilita+One):
+
+1. `exampleBakeEffects` bakes the printable ASCII characters at 32 pixels, with a glyph padding of (6, 4, 6, 10) and without rotation. It saves `resources/effects.frb` and `resources/effects.tga`, the texture in grayscale.
+2. [tools/add_effects.py](tools/add_effects.py) adds a 2 pixel dark outline, a shadow 4 pixels down and a bevel lit from above, and saves `resources/effectfx.tga`. The glyphs stay white, so the color of the text tints them while the outline stays dark. It needs Python with numpy and Pillow, and its settings are at the top of the file. An image program can do the same.
+3. `exampleEffects` draws with `FontBaked` and that texture: once in white, which keeps the colors of the texture, and then in other colors, one of them fading with its alpha.
+
+![Effects example](screenshots/captureEffects.png)
+
+The repository already has the files of the three steps, so `exampleEffects` works without running the others. If you bake the font again, run the script again too: the texture with the effects must come from the same bake as the metrics file.
 
 ## Drawing with the GPU
 
 `GetGlyphQuads` gives the glyphs that `DrawText` would draw: where each one goes, relative to the position of the text, and the area of the texture it uses. Draw a textured quad for each one. The clipping does not apply to the quads.
 
-The packer can rotate a glyph to fit it better. A rotated glyph is stored transposed: the pixel (x, y) of the quad is the texel (textureRect.x + y, textureRect.y + x).
+The packer can rotate a glyph to fit it better, unless you call `SetAllowRotation(false)`. A rotated glyph is stored transposed: the pixel (x, y) of the quad is the texel (textureRect.x + y, textureRect.y + x).
+
+`GetTextureFormat` says how to upload the texture. A `Font` always has an `Alpha8` texture, with one byte of coverage per texel. A `FontBaked` read from a TGA with alpha has a `BGRA32` texture, with the bytes blue, green, red and alpha, not premultiplied. It is the order of the TGA file and of the 32-bit window buffers of Windows, macOS and Linux, so `DrawText` does not reorder the channels. Upload it with `GL_BGRA` and `GL_UNSIGNED_BYTE` in OpenGL, or as `DXGI_FORMAT_B8G8R8A8_UNORM` in Direct3D. OpenGL ES and WebGL only accept `GL_BGRA` with an extension: upload the bytes as `GL_RGBA`, and swap red and blue in the shader with `.bgra`, which costs nothing.
 
 With `Font`, drawing or measuring text can render new glyphs and change the texture. `GetTextureVersion` changes every time the texels change, so compare it with the version you uploaded to know when to upload the texture again.
 
@@ -134,7 +180,7 @@ You have two options:
   |`FONTRENDERER_USE_LIBSCHRIFT`|`ON`|The libschrift backend, `FontSFT`|
   |`FONTRENDERER_USE_FREETYPE`|`OFF`|The FreeType backend, `FontFT`. CMake uses the FreeType installed in the system, and downloads it if there is none|
   |`FONTRENDERER_USE_BAKED`|`ON`|The backend that reads baked fonts, `FontBaked`|
-  |`FONTRENDERER_BUILD_EXAMPLES`|`ON` only when FontRenderer is the main project|The examples, which show every backend that is on. They download MiniFB, unless the project that adds FontRenderer already has a `minifb` target|
+  |`FONTRENDERER_BUILD_EXAMPLES`|`ON` only when FontRenderer is the main project|The examples, which show every backend that is on. The [effects example](#the-effects-example) also needs `FONTRENDERER_USE_BAKED`. They download MiniFB, unless the project that adds FontRenderer already has a `minifb` target|
   |`FONTRENDERER_BUILD_TESTS`|`ON` only when FontRenderer is the main project|The unit tests|
 
   At least one backend must be on. The library defines `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` and `FONTRENDERER_USE_BAKED` for each backend that is on, also for the code that uses the library. The header of each backend, like `FontSTB.h`, stops the build if its macro is not defined.
@@ -206,7 +252,7 @@ You have two options:
 
 FontRenderer is distributed under the Boost Software License 1.0, see [LICENSE](LICENSE).
 
-The licenses of the third party code and fonts in this repository are in [LICENSES](LICENSES): stb_truetype, libschrift, doctest, and the Roboto and DejaVu fonts used by the examples and the tests.
+The licenses of the third party code and fonts in this repository are in [LICENSES](LICENSES): stb_truetype, libschrift, doctest, and the Roboto, DejaVu and Lilita One fonts used by the examples and the tests. The textures in `bin/resources` are baked from Lilita One.
 
 CMake downloads MiniFB for the examples, and FreeType when `FONTRENDERER_USE_FREETYPE` is on and the system has none. They are not part of this repository and have their own licenses. If your program uses the FreeType backend, it includes FreeType, whose license (the FreeType License or the GPLv2, as you choose) asks you to credit FreeType in your documentation.
 

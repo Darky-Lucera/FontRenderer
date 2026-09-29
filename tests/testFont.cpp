@@ -34,12 +34,12 @@ namespace {
         }
     }
 
-    // Counts texels closer than the padding to a glyph, on any side, that are not empty or fall outside the texture.
+    // Counts texels closer than the spacing to a glyph, on any side, that are not empty or fall outside the texture.
     //---------------------------------
     template <class TFont>
     int
-    CountPaddingErrors(const TFont &font) {
-        const int      padding = int(font.GetGlyphPadding());
+    CountSpacingErrors(const TFont &font) {
+        const int      spacing = int(font.GetGlyphSpacing());
         const int      width   = int(font.GetTextureWidth());
         const int      height  = int(font.GetTextureHeight());
         const uint8_t  *texels = font.GetTexture();
@@ -51,8 +51,8 @@ namespace {
             }
 
             const Font::Rect &rect = entry.second.rect;
-            for(int y = rect.top() - padding; y < rect.bottom() + padding; ++y) {
-                for(int x = rect.left() - padding; x < rect.right() + padding; ++x) {
+            for(int y = rect.top() - spacing; y < rect.bottom() + spacing; ++y) {
+                for(int x = rect.left() - spacing; x < rect.right() + spacing; ++x) {
                     if(x < 0 || y < 0 || x >= width || y >= height) {
                         ++errors;
                         continue;
@@ -234,34 +234,132 @@ TEST_CASE("Font keeps packed glyphs intact while the texture grows") {
 }
 
 //-------------------------------------
-TEST_CASE_TEMPLATE("Font keeps the padding around every glyph empty", TFont, FONT_BACKENDS) {
-    for(uint32_t padding : { 0u, 1u, 3u }) {
+TEST_CASE_TEMPLATE("Font keeps the spacing around every glyph empty", TFont, FONT_BACKENDS) {
+    for(uint32_t spacing : { 0u, 1u, 3u }) {
         for(Font::ETextureGrowth growth : { Font::ETextureGrowth::Height, Font::ETextureGrowth::Width, Font::ETextureGrowth::Both }) {
-            CAPTURE(padding);
+            CAPTURE(spacing);
             CAPTURE(int(growth));
 
             TFont font;
             font.SetTextureGrowth(growth);
-            font.SetAntialias(padding == 3);
-            font.SetAntialiasAllowEx(padding == 3);
+            font.SetAntialias(spacing == 3);
+            font.SetAntialiasAllowEx(spacing == 3);
             RenderAscii(font, { 30 });
 
-            // Changing the padding discards the glyphs; 1 is the default, so it keeps them.
-            REQUIRE(font.SetGlyphPadding(padding));
-            CHECK(font.GetGlyphCount() == (padding == 1 ? 94u : 0u));
+            // Changing the spacing discards the glyphs; 1 is the default, so it keeps them.
+            REQUIRE(font.SetGlyphSpacing(spacing));
+            CHECK(font.GetGlyphCount() == (spacing == 1 ? 94u : 0u));
 
             RenderAscii(font, { 8, 24, 40, 56, 72 });
-            CHECK(CountPaddingErrors(font) == 0);
+            CHECK(CountSpacingErrors(font) == 0);
         }
     }
 }
 
 //-------------------------------------
-TEST_CASE_TEMPLATE("Font rejects a padding that leaves no room", TFont, FONT_BACKENDS) {
+TEST_CASE_TEMPLATE("Font rejects a spacing that leaves no room", TFont, FONT_BACKENDS) {
     TFont font;
 
-    CHECK_FALSE(font.SetGlyphPadding(font.GetTextureHeight()));
-    CHECK(font.GetGlyphPadding() == 1);
+    CHECK_FALSE(font.SetGlyphSpacing(font.GetTextureHeight()));
+    CHECK(font.GetGlyphSpacing() == 1);
+}
+
+//-------------------------------------
+TEST_CASE_TEMPLATE("Font glyph padding grows every glyph without changing what is drawn", TFont, FONT_BACKENDS) {
+    const uint32_t kLeft = 2, kTop = 3, kRight = 4, kBottom = 5;
+    const int      kWidth = 900, kHeight = 400, kPosX = 30, kPosY = 20;
+
+    for(bool antialias : { false, true }) {
+        CAPTURE(antialias);
+        TFont plain;
+        TFont padded;
+        for(TFont *font : { &plain, &padded }) {
+            font->SetAntialias(antialias);
+            font->SetAntialiasAllowEx(antialias);
+        }
+        REQUIRE(padded.SetGlyphPadding(kLeft, kTop, kRight, kBottom));
+        CHECK(padded.GetGlyphPaddingLeft()   == kLeft);
+        CHECK(padded.GetGlyphPaddingTop()    == kTop);
+        CHECK(padded.GetGlyphPaddingRight()  == kRight);
+        CHECK(padded.GetGlyphPaddingBottom() == kBottom);
+
+        for(const char *text : kTexts) {
+            for(int height : { 12, 57 }) {
+                CAPTURE(text);
+                CAPTURE(height);
+
+                // Preload goes through its own packing path, so it is checked too.
+                REQUIRE(padded.Preload(text, uint8_t(height)));
+
+                // The padding is empty, so it draws nothing.
+                std::vector<uint32_t> expected(kWidth * kHeight, 0);
+                std::vector<uint32_t> buffer(kWidth * kHeight, 0);
+                plain.DrawText(text, uint8_t(height), 0xffffffffu, expected.data(), kWidth, kPosX, kPosY);
+                padded.DrawText(text, uint8_t(height), 0xffffffffu, buffer.data(), kWidth, kPosX, kPosY);
+                CHECK(buffer == expected);
+
+                std::vector<GlyphQuad> expectedQuads, quads;
+                plain.GetGlyphQuads(text, uint8_t(height), expectedQuads);
+                padded.GetGlyphQuads(text, uint8_t(height), quads);
+                REQUIRE(quads.size() == expectedQuads.size());
+                for(size_t i = 0; i < quads.size(); ++i) {
+                    CHECK(quads[i].x      == expectedQuads[i].x - int32_t(kLeft));
+                    CHECK(quads[i].y      == expectedQuads[i].y - int32_t(kTop));
+                    CHECK(quads[i].width  == expectedQuads[i].width  + int32_t(kLeft + kRight));
+                    CHECK(quads[i].height == expectedQuads[i].height + int32_t(kTop + kBottom));
+                }
+
+                Font::Rect expectedBox, box;
+                plain.GetTextBox(text, uint8_t(height), &expectedBox);
+                padded.GetTextBox(text, uint8_t(height), &box);
+                CHECK(box.top()    == expectedBox.top()    - int32_t(kTop));
+                CHECK(box.bottom() == expectedBox.bottom() + int32_t(kBottom));
+                CHECK(box.left()   <= expectedBox.left());
+                CHECK(box.right()  >= expectedBox.right());
+            }
+        }
+        CHECK(CountSpacingErrors(padded) == 0);
+    }
+}
+
+//-------------------------------------
+TEST_CASE_TEMPLATE("Font rejects a glyph padding that would not fit in any texture", TFont, FONT_BACKENDS) {
+    TFont font;
+    REQUIRE(font.SetGlyphPadding(1, 2, 3, 4));
+
+    CHECK_FALSE(font.SetGlyphPadding(Font::kMaxTextureSize, 0, 0, 0));
+    CHECK_FALSE(font.SetGlyphPadding(Font::kMaxTextureSize / 2, 0, Font::kMaxTextureSize / 2, 0));
+    CHECK_FALSE(font.SetGlyphPadding(0, UINT32_MAX, 0, 1));
+    CHECK(font.GetGlyphPaddingLeft()   == 1);
+    CHECK(font.GetGlyphPaddingTop()    == 2);
+    CHECK(font.GetGlyphPaddingRight()  == 3);
+    CHECK(font.GetGlyphPaddingBottom() == 4);
+
+    CHECK(font.SetGlyphPadding(Font::kMaxTextureSize / 2, 0, Font::kMaxTextureSize / 2 - 1, 0));
+}
+
+//-------------------------------------
+TEST_CASE("Font without rotation never stores a glyph transposed") {
+    // With the texture height fixed at 128, a glyph 200 pixels tall only fits rotated.
+    Inspectable<Test::DefaultFont> font;
+    font.SetTextureGrowth(Font::ETextureGrowth::Width);
+    const std::vector<uint8_t> pixels(10 * 200, 255);
+    CodePointHeightData        data {};
+    CHECK(font.GetAllowRotation());
+    CHECK(font.PackGlyph(pixels.data(), 10, 200, data));
+    CHECK(data.rotated);
+
+    font.Reset();
+    font.SetAllowRotation(false);
+    CHECK_FALSE(font.GetAllowRotation());
+    CHECK_FALSE(font.PackGlyph(pixels.data(), 10, 200, data));
+
+    RenderAscii(font, { 9, 23, 47, 64 });
+    int rotated = 0;
+    for(const auto &entry : font.mCodePointHeightData) {
+        rotated += entry.second.rotated ? 1 : 0;
+    }
+    CHECK(rotated == 0);
 }
 
 //-------------------------------------
@@ -346,8 +444,14 @@ TEST_CASE_TEMPLATE("Font discards glyphs only when a setting changes", TFont, FO
     font.SetAntialiasAllowEx(font.GetAntialiasAllowEx());
     font.SetAntialiasWeights(font.GetAntialiasCenter(), font.GetAntialiasBorder(), font.GetAntialiasCorner());
     font.SetSizeMode(font.GetSizeMode());
-    font.SetGlyphPadding(font.GetGlyphPadding());
+    font.SetGlyphSpacing(font.GetGlyphSpacing());
+    font.SetGlyphPadding(font.GetGlyphPaddingLeft(), font.GetGlyphPaddingTop(), font.GetGlyphPaddingRight(), font.GetGlyphPaddingBottom());
+    font.SetAllowRotation(!font.GetAllowRotation());
+    font.SetPackingHeuristic(Font::ELevelChoiceHeuristic::LevelMinWasteFit);
     CHECK(font.GetGlyphCount() == 94);
+
+    font.SetGlyphPadding(0, 0, 0, 1);
+    CHECK(font.GetGlyphCount() == 0);
 
     font.SetAntialias(!font.GetAntialias());
     CHECK(font.GetGlyphCount() == 0);
@@ -399,19 +503,19 @@ TEST_CASE_TEMPLATE("Font used texture size covers every glyph", TFont, FONT_BACK
 
         const int usedWidth  = int(font.GetUsedTextureWidth());
         const int usedHeight = int(font.GetUsedTextureHeight());
-        const int padding    = int(font.GetGlyphPadding());
+        const int spacing    = int(font.GetGlyphSpacing());
         CHECK(usedWidth  <= int(font.GetTextureWidth()));
         CHECK(usedHeight <= int(font.GetTextureHeight()));
 
         int outside = 0;
         for(const auto &entry : font.mCodePointHeightData) {
             const Font::Rect &rect = entry.second.rect;
-            if(entry.second.glyph > 0 && (rect.right() + padding > usedWidth || rect.bottom() + padding > usedHeight)) {
+            if(entry.second.glyph > 0 && (rect.right() + spacing > usedWidth || rect.bottom() + spacing > usedHeight)) {
                 ++outside;
             }
         }
         CHECK(outside == 0);
-        CHECK(CountPaddingErrors(font) == 0);
+        CHECK(CountSpacingErrors(font) == 0);
     }
 }
 
@@ -465,7 +569,7 @@ TEST_CASE_TEMPLATE("Font preload draws the same as rendering each glyph when it 
     CHECK(preloaded.GetTextureHeight() > 128);
     // The 95 printable ASCII characters, and ¿, ó and á, at two heights.
     CHECK(preloaded.GetGlyphCount() == 2 * 98);
-    CHECK(CountPaddingErrors(preloaded) == 0);
+    CHECK(CountSpacingErrors(preloaded) == 0);
 }
 
 //-------------------------------------

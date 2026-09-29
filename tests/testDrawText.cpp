@@ -149,7 +149,7 @@ namespace {
 //-------------------------------------
 TEST_CASE_TEMPLATE("Font draws every glyph exactly as its rasterizer renders it", TFont, FONT_BACKENDS) {
     struct Atlas {
-        uint32_t                        padding;
+        uint32_t                        spacing;
         Font::ELevelChoiceHeuristic     heuristic;
         Font::ETextureGrowth            growth;
     };
@@ -165,14 +165,14 @@ TEST_CASE_TEMPLATE("Font draws every glyph exactly as its rasterizer renders it"
     int       rotated = 0;
     for(const Atlas &atlas : atlases) {
         TFont font;
-        REQUIRE(font.SetGlyphPadding(atlas.padding));
+        REQUIRE(font.SetGlyphSpacing(atlas.spacing));
         font.SetPackingHeuristic(atlas.heuristic);
         font.SetTextureGrowth(atlas.growth);
 
         for(int height : { 9, 23, 47, 64 }) {
             const HeightData &heightData = font.GetDataForHeight(uint8_t(height));
             for(uint32_t codePoint = 33; codePoint < 127; ++codePoint) {
-                CAPTURE(atlas.padding);
+                CAPTURE(atlas.spacing);
                 CAPTURE(height);
                 CAPTURE(codePoint);
 

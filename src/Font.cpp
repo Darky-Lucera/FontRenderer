@@ -73,7 +73,7 @@ Font::InitPacker() {
     constexpr uint32_t kWidth  = 512;
     constexpr uint32_t kHeight = 128;
 
-    mPacker.Init(kWidth - mGlyphPadding, kHeight - mGlyphPadding, true);
+    mPacker.Init(kWidth - mGlyphSpacing, kHeight - mGlyphSpacing, mPacker.GetAllowRotation());
     try {
         mTexture.assign(size_t(kWidth) * kHeight, 0);
     }
@@ -92,14 +92,14 @@ Font::InitPacker() {
 uint32_t
 Font::GetUsedTextureWidth() const {
     const uint32_t used = mPacker.GetUsedWidth();
-    return (used > 0) ? used + mGlyphPadding : 0;
+    return (used > 0) ? used + mGlyphSpacing : 0;
 }
 
 //-------------------------------------
 uint32_t
 Font::GetUsedTextureHeight() const {
     const uint32_t used = mPacker.GetUsedHeight();
-    return (used > 0) ? used + mGlyphPadding : 0;
+    return (used > 0) ? used + mGlyphSpacing : 0;
 }
 
 //-------------------------------------
@@ -146,17 +146,17 @@ Font::SetAntialiasWeights(int32_t center, int32_t border, int32_t corner) {
 
 //-------------------------------------
 bool
-Font::SetGlyphPadding(uint32_t padding) {
-    if(padding == mGlyphPadding) {
+Font::SetGlyphSpacing(uint32_t spacing) {
+    if(spacing == mGlyphSpacing) {
         return true;
     }
 
-    if(padding >= mTextureWidth || padding >= mTextureHeight) {
+    if(spacing >= mTextureWidth || spacing >= mTextureHeight) {
         return false;
     }
 
-    mGlyphPadding = padding;
-    mPacker.Init(mTextureWidth - padding, mTextureHeight - padding, true);
+    mGlyphSpacing = spacing;
+    mPacker.Init(mTextureWidth - spacing, mTextureHeight - spacing, mPacker.GetAllowRotation());
     Reset();
 
     return true;
@@ -164,14 +164,34 @@ Font::SetGlyphPadding(uint32_t padding) {
 
 //-------------------------------------
 bool
-Font::CanEverFit(uint32_t paddedWidth, uint32_t paddedHeight) const {
+Font::SetGlyphPadding(uint32_t left, uint32_t top, uint32_t right, uint32_t bottom) {
+    if(left == mGlyphPaddingLeft && top == mGlyphPaddingTop && right == mGlyphPaddingRight && bottom == mGlyphPaddingBottom) {
+        return true;
+    }
+
+    if(uint64_t(left) + right >= kMaxTextureSize || uint64_t(top) + bottom >= kMaxTextureSize) {
+        return false;
+    }
+
+    mGlyphPaddingLeft   = left;
+    mGlyphPaddingTop    = top;
+    mGlyphPaddingRight  = right;
+    mGlyphPaddingBottom = bottom;
+    Reset();
+
+    return true;
+}
+
+//-------------------------------------
+bool
+Font::CanEverFit(uint32_t spacedWidth, uint32_t spacedHeight) const {
     const bool canGrowWidth  = mTextureGrowth != ETextureGrowth::Height;
     const bool canGrowHeight = mTextureGrowth != ETextureGrowth::Width;
     auto fits = [&](uint32_t w, uint32_t h) {
         return (canGrowWidth || w <= mPacker.GetWidth()) && (canGrowHeight || h <= mPacker.GetHeight());
     };
 
-    return fits(paddedWidth, paddedHeight) || fits(paddedHeight, paddedWidth);
+    return fits(spacedWidth, spacedHeight) || (mPacker.GetAllowRotation() && fits(spacedHeight, spacedWidth));
 }
 
 //-------------------------------------
@@ -181,19 +201,19 @@ Font::PackGlyph(const uint8_t *pixels, uint32_t width, uint32_t height, CodePoin
     data.rotated = false;
 
     // Fail early instead of growing the texture up to the limit for nothing.
-    const uint32_t paddedWidth  = width  + mGlyphPadding;
-    const uint32_t paddedHeight = height + mGlyphPadding;
-    if(CanEverFit(paddedWidth, paddedHeight) == false) {
+    const uint32_t spacedWidth  = width  + mGlyphSpacing;
+    const uint32_t spacedHeight = height + mGlyphSpacing;
+    if(CanEverFit(spacedWidth, spacedHeight) == false) {
         return false;
     }
 
-    Rect rect = mPacker.Insert(paddedWidth, paddedHeight, mPackingHeuristic);
+    Rect rect = mPacker.Insert(spacedWidth, spacedHeight, mPackingHeuristic);
     while(rect.width <= 0) {
         if(GrowTexture() == false) {
             return false;
         }
 
-        rect = mPacker.Insert(paddedWidth, paddedHeight, mPackingHeuristic);
+        rect = mPacker.Insert(spacedWidth, spacedHeight, mPackingHeuristic);
     }
 
     CopyGlyph(pixels, width, height, rect, data);
@@ -206,14 +226,14 @@ void
 Font::CopyGlyph(const uint8_t *pixels, uint32_t width, uint32_t height, const Rect &packed, CodePointHeightData &data) {
     Rect &rect = data.rect;
     rect         = packed;
-    data.rotated = uint32_t(rect.width) != width + mGlyphPadding;
+    data.rotated = uint32_t(rect.width) != width + mGlyphSpacing;
 
-    // The padding reserved at the right and bottom of the glyph stays empty. Shifting by the padding moves
+    // The spacing reserved at the right and bottom of the glyph stays empty. Shifting by the spacing moves
     // the glyph past the empty band along the top and left texture edges, so it has empty pixels on every side.
-    rect.x      += int32_t(mGlyphPadding);
-    rect.y      += int32_t(mGlyphPadding);
-    rect.width  -= int32_t(mGlyphPadding);
-    rect.height -= int32_t(mGlyphPadding);
+    rect.x      += int32_t(mGlyphSpacing);
+    rect.y      += int32_t(mGlyphSpacing);
+    rect.width  -= int32_t(mGlyphSpacing);
+    rect.height -= int32_t(mGlyphSpacing);
 
     const size_t textureWidth = mTextureWidth;
     const size_t stepX        = data.rotated ? textureWidth : 1;
@@ -261,7 +281,7 @@ Font::GrowTexture() {
     ++mTextureVersion;
 
     // Cannot fail: the new size is bigger and within kMaxTextureSize.
-    const bool resized = mPacker.ResizeBin(newWidth - mGlyphPadding, newHeight - mGlyphPadding);
+    const bool resized = mPacker.ResizeBin(newWidth - mGlyphSpacing, newHeight - mGlyphSpacing);
     assert(resized);
     (void) resized;
 
@@ -518,9 +538,33 @@ Font::RenderGlyph(uint32_t codePoint, uint8_t height, CodePointHeightData &data,
         const int grown = ApplyAntialias(bitmap.pixels, bitmap.width, bitmap.height);
         data.x -= grown;
         data.y -= grown;
+        ApplyPadding(bitmap, data);
     }
 
     return true;
+}
+
+//-------------------------------------
+void
+Font::ApplyPadding(GlyphBitmap &bitmap, CodePointHeightData &data) {
+    const int left   = int(mGlyphPaddingLeft);
+    const int top    = int(mGlyphPaddingTop);
+    const int width  = bitmap.width  + left + int(mGlyphPaddingRight);
+    const int height = bitmap.height + top  + int(mGlyphPaddingBottom);
+    if(width == bitmap.width && height == bitmap.height) {
+        return;
+    }
+
+    auto pixels = std::make_unique<uint8_t[]>(size_t(width) * size_t(height));
+    for(int y = 0; y < bitmap.height; ++y) {
+        memcpy(&pixels[size_t(y + top) * size_t(width) + size_t(left)], &bitmap.pixels[size_t(y) * size_t(bitmap.width)], size_t(bitmap.width));
+    }
+
+    bitmap.pixels = std::move(pixels);
+    bitmap.width  = width;
+    bitmap.height = height;
+    data.x -= left;
+    data.y -= top;
 }
 
 //-------------------------------------
@@ -567,7 +611,7 @@ Font::Preload(const char *utf8, uint8_t textHeight) {
     std::vector<SkylineBinPack::Size> sizes;
     std::vector<Pending *>            packing;
     for(Pending &glyph : pending) {
-        const SkylineBinPack::Size size { uint32_t(glyph.bitmap.width) + mGlyphPadding, uint32_t(glyph.bitmap.height) + mGlyphPadding };
+        const SkylineBinPack::Size size { uint32_t(glyph.bitmap.width) + mGlyphSpacing, uint32_t(glyph.bitmap.height) + mGlyphSpacing };
         if(CanEverFit(size.width, size.height)) {
             sizes.push_back(size);
             packing.push_back(&glyph);
@@ -653,7 +697,7 @@ Font::SaveBaked(const char *metricsFile, const char *textureFile) const {
     // A TGA image cannot be empty, and the texture is when no glyph has pixels.
     const uint32_t width  = std::max<uint32_t>(GetUsedTextureWidth(), 1);
     const uint32_t height = std::max<uint32_t>(GetUsedTextureHeight(), 1);
-    if(WriteTga(textureFile, mTexture.data(), width, height, mTextureWidth, true) == false) {
+    if(WriteTga(textureFile, mTexture.data(), width, height, mTextureWidth, 1, true) == false) {
         return EStatus::CannotWriteFile;
     }
 

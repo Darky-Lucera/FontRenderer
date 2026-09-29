@@ -96,6 +96,7 @@ TEST_CASE_TEMPLATE("FontBaked draws exactly as the font it was saved from", TFon
     FontBaked baked(Test::kMetricsPath, Test::kTexturePath);
     REQUIRE(baked.GetStatus() == Font::EStatus::Ok);
     CHECK(baked.GetFontName() == Test::kMetricsPath);
+    CHECK(baked.GetTextureFormat() == FontBase::ETextureFormat::Alpha8);
     CHECK(baked.GetTextureWidth()  == font.GetUsedTextureWidth());
     CHECK(baked.GetTextureHeight() == font.GetUsedTextureHeight());
 
@@ -167,17 +168,20 @@ TEST_CASE("FontBaked takes the texture from memory") {
     FontBaked                  reference(Test::kMetricsPath, Test::kTexturePath);
     const std::vector<uint8_t> file = ReadFile(Test::kTexturePath);
     std::vector<uint8_t>       texture;
-    uint32_t                   width = 0, height = 0;
-    REQUIRE(ReadTga(file.data(), file.size(), texture, width, height));
+    uint32_t                   width = 0, height = 0, channels = 0;
+    REQUIRE(ReadTga(file.data(), file.size(), texture, width, height, channels));
+    REQUIRE(channels == 1);
+    CHECK(reference.GetTextureFormat() == FontBase::ETextureFormat::Alpha8);
 
-    FontBaked baked(Test::kMetricsPath, texture.data(), width, height);
+    FontBaked baked(Test::kMetricsPath, texture.data(), width, height, FontBase::ETextureFormat::Alpha8);
     REQUIRE(baked.GetStatus() == Font::EStatus::Ok);
     CHECK(Draw(baked, kTexts[1], 30) == Draw(reference, kTexts[1], 30));
 
     // Only in the GPU: there is nothing to draw with, but the quads are the same.
-    FontBaked gpu(Test::kMetricsPath, nullptr, width, height);
+    FontBaked gpu(Test::kMetricsPath, nullptr, width, height, FontBase::ETextureFormat::BGRA32);
     REQUIRE(gpu.GetStatus() == Font::EStatus::Ok);
     CHECK(gpu.GetTexture() == nullptr);
+    CHECK(gpu.GetTextureFormat() == FontBase::ETextureFormat::BGRA32);
     CHECK(Draw(gpu, kTexts[1], 30) == std::vector<uint32_t>(400 * 160, 0));
 
     std::vector<GlyphQuad> expected, quads;
@@ -185,8 +189,79 @@ TEST_CASE("FontBaked takes the texture from memory") {
     gpu.GetGlyphQuads(kTexts[1], 30, quads);
     CHECK(AreEqual(quads, expected));
 
-    CHECK(FontBaked(Test::kMetricsPath, texture.data(), width + 1, height).GetStatus() == Font::EStatus::InvalidFont);
-    CHECK(FontBaked(Test::kMetricsPath, nullptr, width, height - 1).GetStatus() == Font::EStatus::InvalidFont);
+    CHECK(FontBaked(Test::kMetricsPath, texture.data(), width + 1, height, FontBase::ETextureFormat::Alpha8).GetStatus() == Font::EStatus::InvalidTexture);
+    CHECK(FontBaked(Test::kMetricsPath, nullptr, width, height - 1, FontBase::ETextureFormat::Alpha8).GetStatus() == Font::EStatus::InvalidTexture);
+}
+
+//-------------------------------------
+TEST_CASE("FontBaked draws a BGRA32 texture multiplied by the color of the text") {
+    Test::DefaultFont font(Test::kFontPath);
+    SaveAllText(font);
+
+    FontBaked                  reference(Test::kMetricsPath, Test::kTexturePath);
+    const std::vector<uint8_t> file = ReadFile(Test::kTexturePath);
+    std::vector<uint8_t>       coverage;
+    uint32_t                   width = 0, height = 0, channels = 0;
+    REQUIRE(ReadTga(file.data(), file.size(), coverage, width, height, channels));
+
+    // White with the coverage as alpha draws the same as the coverage alone, whatever the color of the text.
+    std::vector<uint8_t> white;
+    for(uint8_t alpha : coverage) {
+        white.insert(white.end(), { 255, 255, 255, alpha });
+    }
+    REQUIRE(WriteTga(Test::kTexturePath, white.data(), width, height, size_t(width) * 4, 4, true));
+    FontBaked baked(Test::kMetricsPath, Test::kTexturePath);
+    REQUIRE(baked.GetStatus() == Font::EStatus::Ok);
+    CHECK(baked.GetTextureFormat() == FontBase::ETextureFormat::BGRA32);
+    CHECK(std::vector<uint8_t>(baked.GetTexture(), baked.GetTexture() + white.size()) == white);
+
+    for(uint32_t color : { kWhite, 0x80ff8040u }) {
+        for(const char *text : kTexts) {
+            CAPTURE(color);
+            CAPTURE(text);
+            std::vector<uint32_t> expected(400 * 160, 0xff203040u);
+            std::vector<uint32_t> buffer(400 * 160, 0xff203040u);
+            reference.DrawText(text, 30, color, expected.data(), 400, 10, 10);
+            baked.DrawText(text, 30, color, buffer.data(), 400, 10, 10);
+            CHECK(buffer == expected);
+        }
+    }
+
+    // The same texture as a 16-bit grayscale TGA with alpha, which WriteTga does not write.
+    std::vector<uint8_t> grayAlpha(18, 0);
+    grayAlpha[2]  = 3;
+    grayAlpha[12] = uint8_t(width);
+    grayAlpha[13] = uint8_t(width >> 8);
+    grayAlpha[14] = uint8_t(height);
+    grayAlpha[15] = uint8_t(height >> 8);
+    grayAlpha[16] = 16;
+    grayAlpha[17] = 0x28;
+    for(uint8_t alpha : coverage) {
+        grayAlpha.insert(grayAlpha.end(), { 255, alpha });
+    }
+    WriteFile(Test::kTexturePath, grayAlpha);
+    FontBaked gray(Test::kMetricsPath, Test::kTexturePath);
+    REQUIRE(gray.GetStatus() == Font::EStatus::Ok);
+    CHECK(gray.GetTextureFormat() == FontBase::ETextureFormat::BGRA32);
+    CHECK(std::vector<uint8_t>(gray.GetTexture(), gray.GetTexture() + white.size()) == white);
+
+    // A single glyph, so no pixel is blended twice. Blue 128, green 0 and red 255.
+    std::vector<uint8_t> tinted;
+    for(uint8_t alpha : coverage) {
+        tinted.insert(tinted.end(), { 128, 0, 255, alpha });
+    }
+    FontBaked                   tintedFont(Test::kMetricsPath, tinted.data(), width, height, FontBase::ETextureFormat::BGRA32);
+    const std::vector<uint32_t> expected = Draw(reference, "H", 30);
+    const std::vector<uint32_t> buffer   = Draw(tintedFont, "H", 30);
+    int                         wrongPixels = 0;
+    for(size_t i = 0; i < buffer.size(); ++i) {
+        const uint32_t alpha = expected[i] & 0xff;
+        const uint32_t pixel = 0xff000000u | (alpha << 16) | (((128 * alpha) / 255) & 0xff);
+        if(buffer[i] != ((expected[i] == 0) ? 0 : pixel)) {
+            ++wrongPixels;
+        }
+    }
+    CHECK(wrongPixels == 0);
 }
 
 //-------------------------------------
@@ -203,14 +278,14 @@ TEST_CASE("FontBaked reports files it cannot use") {
     CHECK(FontBaked(Test::kMetricsPath, "this-file-does-not-exist.tga").GetStatus() == Font::EStatus::CannotOpenFile);
     // Any file that is not what it should be, like this source file.
     CHECK(FontBaked(__FILE__, Test::kTexturePath).GetStatus() == Font::EStatus::InvalidFont);
-    CHECK(FontBaked(Test::kMetricsPath, __FILE__).GetStatus() == Font::EStatus::InvalidFont);
+    CHECK(FontBaked(Test::kMetricsPath, __FILE__).GetStatus() == Font::EStatus::InvalidTexture);
 
     // The texture is smaller than the one the glyphs were placed in.
     std::vector<uint8_t> small = texture;
     small[12] = uint8_t(small[12] - 1);
     small.resize(small.size() - 1);
     WriteFile(Test::kTexturePath, small);
-    CHECK(FontBaked(Test::kMetricsPath, Test::kTexturePath).GetStatus() == Font::EStatus::InvalidFont);
+    CHECK(FontBaked(Test::kMetricsPath, Test::kTexturePath).GetStatus() == Font::EStatus::InvalidTexture);
     WriteFile(Test::kTexturePath, texture);
 
     struct Change {

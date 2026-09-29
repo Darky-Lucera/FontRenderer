@@ -175,6 +175,35 @@ example_draw_box(int32_t left, int32_t top, int32_t width, int32_t height) {
 
 //-------------------------------------
 void
+example_draw_texture(const uint8_t *texels, bool bgra, int32_t width, int32_t height, int32_t left, int32_t top, int32_t right, int32_t bottom) {
+    const int32_t shown_right  = example_min(right, left + width);
+    const int32_t shown_bottom = example_min(bottom, top + height);
+    int32_t       y;
+
+    for(y = example_max(top, 0); y < shown_bottom; ++y) {
+        int32_t  x;
+        uint32_t *row = &g_screen.buffer[(size_t) y * g_screen.width];
+        for(x = example_max(left, 0); x < shown_right; ++x) {
+            const int32_t  texel_x = x - left;
+            const int32_t  texel_y = y - top;
+            const uint32_t square  = ((texel_x / 8 + texel_y / 8) % 2 != 0) ? UINT32_C(0xff383838) : UINT32_C(0xff4a4a4a);
+            const size_t   texel   = (size_t) texel_y * (size_t) width + (size_t) texel_x;
+            if(bgra) {
+                const uint8_t  *bgra_texel = &texels[texel * 4];
+                const uint32_t color       = UINT32_C(0xff000000) | ((uint32_t) bgra_texel[2] << 16) | ((uint32_t) bgra_texel[1] << 8) | bgra_texel[0];
+                row[x] = example_blend(square, color, bgra_texel[3]);
+            }
+            else {
+                row[x] = example_blend(square, UINT32_C(0xffffffff), texels[texel]);
+            }
+        }
+    }
+
+    example_draw_box(left - 1, top - 1, shown_right - left + 2, shown_bottom - top + 2);
+}
+
+//-------------------------------------
+void
 example_draw_clipping(void) {
     const int32_t width  = (int32_t) g_screen.width;
     const int32_t height = (int32_t) g_screen.height;

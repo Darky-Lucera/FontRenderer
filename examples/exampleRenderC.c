@@ -159,11 +159,6 @@ render_atlas(fr_font *font, fr_font *text_font, const char *name, int32_t top) {
     const int32_t right  = example_min((int32_t) g_screen.width - k_margin, (int32_t) g_screen.width);
     const int32_t bottom = example_min((int32_t) g_screen.height - get_status_height() - k_margin, (int32_t) g_screen.height);
     char          label[128];
-    const uint8_t *texels;
-    int32_t       texture_width;
-    int32_t       shown_right;
-    int32_t       shown_bottom;
-    int32_t       y;
 
     snprintf(label, sizeof(label), "Atlas of %s: %u × %u, %u × %u used", name,
              (unsigned) fr_font_get_texture_width(font), (unsigned) fr_font_get_texture_height(font),
@@ -171,23 +166,8 @@ render_atlas(fr_font *font, fr_font *text_font, const char *name, int32_t top) {
     fr_font_draw_text(text_font, label, 14, k_status_color, g_screen.buffer, g_screen.width, left, top);
     top += 22;
 
-    // The checkerboard shows which texels are empty. A texture bigger than the panel is cropped.
-    texels         = fr_font_get_texture(font);
-    texture_width  = (int32_t) fr_font_get_texture_width(font);
-    shown_right    = example_min(right, left + texture_width);
-    shown_bottom   = example_min(bottom, top + (int32_t) fr_font_get_texture_height(font));
-    for(y = example_max(top, 0); y < shown_bottom; ++y) {
-        int32_t x;
-        uint32_t *row = &g_screen.buffer[(size_t) y * g_screen.width];
-        for(x = left; x < shown_right; ++x) {
-            const int32_t texel_x = x - left;
-            const int32_t texel_y = y - top;
-            const uint32_t square = ((texel_x / 8 + texel_y / 8) % 2 != 0) ? UINT32_C(0xff383838) : UINT32_C(0xff4a4a4a);
-            row[x] = example_blend(square, UINT32_C(0xffffffff), texels[(size_t) texel_y * (size_t) texture_width + (size_t) texel_x]);
-        }
-    }
-
-    example_draw_box(left - 1, top - 1, shown_right - left + 2, shown_bottom - top + 2);
+    example_draw_texture(fr_font_get_texture(font), fr_font_get_texture_format(font) == FR_FONT_TEXTURE_FORMAT_BGRA32,
+                         (int32_t) fr_font_get_texture_width(font), (int32_t) fr_font_get_texture_height(font), left, top, right, bottom);
 }
 
 //-------------------------------------

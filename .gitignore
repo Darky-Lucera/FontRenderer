@@ -3,3 +3,13 @@
 /mingw
 *.pdb
 *.exe
+# Sources kept only as reference, and local tool data
+/external
+/.serena
+/.vs
+/out
+*.ilk
+# Written by the example when it bakes a font
+/bin/baked.frb
+/bin/baked.tga
+/vs

@@ -10,13 +10,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 else()
     set(FONTRENDERER_IS_TOP_LEVEL OFF)
 endif()
-option(FONTRENDERER_BUILD_EXAMPLES "Build the examples, which need MiniFB"                ${FONTRENDERER_IS_TOP_LEVEL})
-option(FONTRENDERER_BUILD_TESTS    "Build the unit tests"                                ${FONTRENDERER_IS_TOP_LEVEL})
+option(FONTRENDERER_BUILD_EXAMPLES   "Build the examples, which need MiniFB"                ${FONTRENDERER_IS_TOP_LEVEL})
+option(FONTRENDERER_BUILD_TESTS      "Build the unit tests"                                 ${FONTRENDERER_IS_TOP_LEVEL})
 
-option(FONTRENDERER_USE_STB        "Build the stb_truetype backend"                      ON)
-option(FONTRENDERER_USE_LIBSCHRIFT "Build the libschrift backend"                        ON)
-option(FONTRENDERER_USE_FREETYPE   "Build the FreeType backend"                          OFF)
-option(FONTRENDERER_USE_BAKED      "Build the backend that reads baked fonts"            ON)
+option(FONTRENDERER_USE_STB          "Build the stb_truetype backend"                       ON)
+option(FONTRENDERER_USE_LIBSCHRIFT   "Build the libschrift backend"                         ON)
+option(FONTRENDERER_USE_FREETYPE     "Build the FreeType backend"                           OFF)
+option(FONTRENDERER_USE_BAKED        "Build the backend that reads baked fonts"             ON)
 
 if(FONTRENDERER_USE_STB OR FONTRENDERER_USE_LIBSCHRIFT OR FONTRENDERER_USE_FREETYPE)
     set(FONTRENDERER_HAS_RASTERIZER ON)
@@ -252,6 +252,37 @@ if(FONTRENDERER_BUILD_EXAMPLES)
     if(DJGPP)
         set_target_properties(exampleRender PROPERTIES OUTPUT_NAME "example")
         set_target_properties(exampleRenderC PROPERTIES OUTPUT_NAME "examplec")
+    endif()
+
+    if(FONTRENDERER_USE_BAKED)
+        set(SRC_ExampleBakeEffects
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/exampleBakeEffects.cpp
+            ${SRC_ExampleCommon}
+        )
+        source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/examples" FILES ${SRC_ExampleBakeEffects})
+
+        add_executable(exampleBakeEffects
+            ${SRC_ExampleBakeEffects}
+        )
+        target_link_libraries(exampleBakeEffects fontRenderer)
+        target_link_libraries(exampleBakeEffects minifb)
+
+        set(SRC_ExampleEffects
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/exampleEffects.cpp
+            ${SRC_ExampleCommon}
+        )
+        source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/examples" FILES ${SRC_ExampleEffects})
+
+        add_executable(exampleEffects
+            ${SRC_ExampleEffects}
+        )
+        target_link_libraries(exampleEffects fontRenderer)
+        target_link_libraries(exampleEffects minifb)
+
+        if(DJGPP)
+            set_target_properties(exampleBakeEffects PROPERTIES OUTPUT_NAME "bakefx")
+            set_target_properties(exampleEffects PROPERTIES OUTPUT_NAME "effects")
+        endif()
     endif()
 endif()
 
