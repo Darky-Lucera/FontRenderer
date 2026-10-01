@@ -100,7 +100,8 @@ namespace MindShake {
             //-------------------------
             enum class ETextureFormat : int8_t {
                 Alpha8,             // One byte of coverage per texel, drawn with the color of the text
-                BGRA32              // Four bytes per texel: blue, green, red and alpha, not premultiplied, as Color32
+                BGRA32,             // Four bytes per texel: blue, green, red and alpha, not premultiplied, as Color32
+                BGRA32Premultiplied // As BGRA32, with blue, green and red multiplied by the alpha
             };
 
             // Most GPUs cannot allocate bigger textures.
@@ -119,7 +120,8 @@ namespace MindShake {
 
             // Rows of GetTextureWidth texels, in the format GetTextureFormat gives. nullptr if the font has no copy of the texture.
             const uint8_t *             GetTexture() const                  { return mTexture.empty() ? nullptr : mTexture.data(); }
-            // Font always renders Alpha8. Only FontBaked can have a BGRA32 texture.
+            // Font always renders Alpha8. Only FontBaked can have a color texture, and it premultiplies the ones it copies,
+            // so a texture it has is BGRA32Premultiplied. Draw it on the GPU with the blend of premultiplied alpha.
             ETextureFormat              GetTextureFormat() const            { return mTextureFormat;                    }
             uint32_t                    GetTextureWidth() const             { return mTextureWidth;                     }
             uint32_t                    GetTextureHeight() const            { return mTextureHeight;                    }
@@ -130,7 +132,10 @@ namespace MindShake {
             uint32_t                    GetTextureVersion() const           { return mTextureVersion;                   }
 
             // DrawText does not know the size of dst: without SetClipping the text has to fit inside it.
-            // With a BGRA32 texture, the color of each texel is multiplied by color, as a GPU does with the color of a vertex.
+            // With a color texture, the color of each texel is multiplied by color, as a GPU does with the color of a vertex.
+            // It blends the alpha of dst too, as the over operator of Porter and Duff does. Unlike color, dst must have
+            // premultiplied alpha, and so does the result. An opaque pixel is the same either way, and an opaque dst
+            // stays opaque.
             void                        DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_t *dst, uint32_t dstStride, int32_t posX, int32_t posY);
             // Box covering every glyph DrawText would draw, relative to the position passed to it.
             // A text with nothing to draw, like an empty one, gives an empty box.
@@ -150,7 +155,9 @@ namespace MindShake {
             static uint32_t             GetCodePointHeightKey(uint32_t codePoint, uint8_t height);
             static uint64_t             GetKerningKey(uint32_t leftGlyph, uint32_t rightGlyph);
             static EStatus              GetFileStatus(MappedFile::EError error);
-            static uint32_t             GetBytesPerTexel(ETextureFormat format) { return (format == ETextureFormat::BGRA32) ? 4 : 1; }
+            static uint32_t             GetBytesPerTexel(ETextureFormat format) { return (format == ETextureFormat::Alpha8) ? 1 : 4; }
+            // Multiplies blue, green and red of each BGRA32 texel by its alpha, rounded as DrawText rounds.
+            static void                 PremultiplyTexels(uint8_t *texels, size_t texelCount);
 
             // Only what DrawText uses: the heights, the glyphs, and the kerning between the glyphs.
             EStatus                     SaveMetrics(const char *fileName, uint32_t textureWidth, uint32_t textureHeight) const;

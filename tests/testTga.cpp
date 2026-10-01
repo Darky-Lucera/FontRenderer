@@ -29,9 +29,14 @@ namespace {
 
     //---------------------------------
     bool
-    Read(const std::vector<uint8_t> &file, std::vector<uint8_t> &pixels) {
-        uint32_t width, height, channels;
-        return ReadTga(file.data(), file.size(), pixels, width, height, channels);
+    Read(const std::vector<uint8_t> &file, std::vector<uint8_t> &pixels, ETgaAlpha *alpha = nullptr) {
+        uint32_t  width, height, channels;
+        ETgaAlpha readAlpha;
+        const bool read = ReadTga(file.data(), file.size(), pixels, width, height, channels, readAlpha);
+        if(alpha != nullptr) {
+            *alpha = readAlpha;
+        }
+        return read;
     }
 
     // An uncompressed or RLE file of the given pixels. The default descriptor stores the rows from the bottom up, without alpha bits.
@@ -96,7 +101,8 @@ TEST_CASE("TGA keeps the pixels it writes") {
 
         std::vector<uint8_t> pixels;
         uint32_t             width = 0, height = 0, channels = 0;
-        REQUIRE(ReadTga(file.data(), file.size(), pixels, width, height, channels));
+        ETgaAlpha            alpha;
+        REQUIRE(ReadTga(file.data(), file.size(), pixels, width, height, channels, alpha));
         CHECK(width    == kWidth);
         CHECK(height   == kHeight);
         CHECK(channels == 1);
@@ -136,12 +142,37 @@ TEST_CASE("TGA keeps the pixels of a 32-bit image") {
 
         std::vector<uint8_t> pixels;
         uint32_t             width = 0, height = 0, channels = 0;
-        REQUIRE(ReadTga(file.data(), file.size(), pixels, width, height, channels));
+        ETgaAlpha            alpha;
+        REQUIRE(ReadTga(file.data(), file.size(), pixels, width, height, channels, alpha));
         CHECK(width    == kWidth);
         CHECK(height   == kHeight);
         CHECK(channels == 4);
+        CHECK(alpha    == ETgaAlpha::Straight);
         CHECK(pixels   == expected);
     }
+}
+
+//-------------------------------------
+TEST_CASE("TGA marks a premultiplied alpha in the extension area of TGA 2.0") {
+    const uint8_t image[] = { 20, 40, 60, 80,  0, 0, 0, 0 };
+
+    // A straight alpha needs no extension area: the alpha bits of the header already say it.
+    const std::vector<uint8_t> straight = WriteAndRead(image, 2, 1, 8, false, 4);
+    CHECK(straight.size() == 18 + sizeof(image));
+
+    REQUIRE(WriteTga(kTgaPath, image, 2, 1, 8, 4, false, ETgaAlpha::Premultiplied));
+    const std::vector<uint8_t> premultiplied = ReadFile(kTgaPath);
+    CHECK(premultiplied.size() == 18 + sizeof(image) + 495 + 26);
+
+    std::vector<uint8_t> pixels;
+    ETgaAlpha            alpha = ETgaAlpha::Straight;
+    REQUIRE(Read(premultiplied, pixels, &alpha));
+    CHECK(alpha  == ETgaAlpha::Premultiplied);
+    CHECK(pixels == std::vector<uint8_t>(image, image + sizeof(image)));
+
+    // Gray has no alpha to mark.
+    REQUIRE(WriteTga(kTgaPath, image, 8, 1, 8, 1, false, ETgaAlpha::Premultiplied));
+    CHECK(ReadFile(kTgaPath).size() == 18 + sizeof(image));
 }
 
 //-------------------------------------
@@ -156,14 +187,15 @@ TEST_CASE("TGA stores the color channels as they are in memory: blue, green, red
 TEST_CASE("TGA reads 16-bit grayscale with alpha as color") {
     std::vector<uint8_t> pixels;
     uint32_t             width = 0, height = 0, channels = 0;
+    ETgaAlpha            alpha;
 
     const std::vector<uint8_t> uncompressed = MakeFile(3, 2, 1, { 10, 20, 30, 40 }, 16, kTopToBottomWithAlpha);
-    REQUIRE(ReadTga(uncompressed.data(), uncompressed.size(), pixels, width, height, channels));
+    REQUIRE(ReadTga(uncompressed.data(), uncompressed.size(), pixels, width, height, channels, alpha));
     CHECK(channels == 4);
     CHECK(pixels == std::vector<uint8_t> { 10, 10, 10, 20, 30, 30, 30, 40 });
 
     const std::vector<uint8_t> compressed = MakeFile(11, 3, 1, { 0x81, 10, 20, 0x00, 30, 40 }, 16, kTopToBottomWithAlpha);
-    REQUIRE(ReadTga(compressed.data(), compressed.size(), pixels, width, height, channels));
+    REQUIRE(ReadTga(compressed.data(), compressed.size(), pixels, width, height, channels, alpha));
     CHECK(channels == 4);
     CHECK(pixels == std::vector<uint8_t> { 10, 10, 10, 20, 10, 10, 10, 20, 30, 30, 30, 40 });
 }
@@ -187,15 +219,17 @@ TEST_CASE("TGA rejects an alpha the image says it does not have, unless it varie
 //-------------------------------------
 TEST_CASE("TGA reads what the extension area of TGA 2.0 says about the alpha") {
     std::vector<uint8_t> pixels;
+    ETgaAlpha            alpha = ETgaAlpha::Straight;
 
-    // Red 200, green 100 and blue 0 premultiplied by an alpha of 51 are 40, 20 and 0. The last pixel is brighter
-    // than its alpha allows, as in a broken file.
-    const std::vector<uint8_t> premultiplied = AddExtension(MakeFile(2, 3, 1, { 0, 20, 40, 51, 0, 0, 0, 0, 0, 0, 60, 51 }, 32, kTopToBottomWithAlpha), 4);
-    REQUIRE(Read(premultiplied, pixels));
-    CHECK(pixels == std::vector<uint8_t> { 0, 100, 200, 51, 0, 0, 0, 0, 0, 0, 255, 51 });
+    // The pixels are not converted: whoever reads them decides what to do with a premultiplied alpha.
+    const std::vector<uint8_t> premultiplied = AddExtension(MakeFile(2, 2, 1, { 0, 20, 40, 51, 0, 0, 0, 0 }, 32, kTopToBottomWithAlpha), 4);
+    REQUIRE(Read(premultiplied, pixels, &alpha));
+    CHECK(alpha  == ETgaAlpha::Premultiplied);
+    CHECK(pixels == std::vector<uint8_t> { 0, 20, 40, 51, 0, 0, 0, 0 });
 
     const std::vector<uint8_t> straight = AddExtension(MakeFile(2, 1, 1, { 0, 20, 40, 51 }, 32, kTopToBottom), 3);
-    REQUIRE(Read(straight, pixels));
+    REQUIRE(Read(straight, pixels, &alpha));
+    CHECK(alpha  == ETgaAlpha::Straight);
     CHECK(pixels == std::vector<uint8_t> { 0, 20, 40, 51 });
 
     // The extension area is more precise than the alpha bits of the header.
@@ -244,6 +278,10 @@ TEST_CASE("TGA reads packets that cross rows") {
     std::vector<uint8_t> pixels;
     REQUIRE(Read(MakeFile(11, 2, 3, { 0x84, 9, 0x00, 7 }), pixels));
     CHECK(pixels == std::vector<uint8_t> { 9, 7, 9, 9, 9, 9 });
+
+    // The fewest bytes an image can take: only runs of 128 pixels.
+    REQUIRE(Read(MakeFile(11, 16, 16, { 0xff, 7, 0xff, 7 }), pixels));
+    CHECK(pixels == std::vector<uint8_t>(256, 7));
 }
 
 //-------------------------------------
@@ -295,9 +333,23 @@ TEST_CASE("TGA rejects the images it cannot read") {
 
     std::vector<uint8_t> pixels;
     uint32_t             width, height, channels;
-    CHECK_FALSE(ReadTga(valid.data(), valid.size() - 1, pixels, width, height, channels));
-    CHECK_FALSE(ReadTga(valid.data(), 17, pixels, width, height, channels));
-    CHECK_FALSE(ReadTga(nullptr, 0, pixels, width, height, channels));
+    ETgaAlpha            alpha;
+    CHECK_FALSE(ReadTga(valid.data(), valid.size() - 1, pixels, width, height, channels, alpha));
+    CHECK_FALSE(ReadTga(valid.data(), 17, pixels, width, height, channels, alpha));
+    CHECK_FALSE(ReadTga(nullptr, 0, pixels, width, height, channels, alpha));
+
+    // 32768 x 32768 pixels of 4 bytes are 4 GiB, which a 32-bit size_t counts as 0 bytes.
+    std::vector<uint8_t> huge = MakeFile(2, 0, 0, {}, 32);
+    huge[13] = 0x80;
+    huge[15] = 0x80;
+    CHECK_FALSE(Read(huge, pixels));
+
+    // Compressed, it needs a packet for every 128 pixels. With a single one, it is rejected before reserving the 4 GiB.
+    huge[2] = 10;
+    huge.insert(huge.end(), { 0xff, 1, 2, 3, 4 });
+    std::vector<uint8_t> untouched;
+    CHECK_FALSE(Read(huge, untouched));
+    CHECK(untouched.empty());
 
     // Color without alpha.
     CHECK_FALSE(Read(MakeFile(2, 1, 1, { 1, 2, 3 }, 24), pixels));

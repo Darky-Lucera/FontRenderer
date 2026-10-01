@@ -42,6 +42,8 @@ font.DrawText(text, fontSize, color32, bufferDest, bufferDestStride, posX, posY)
 
 **Note**: Each glyph is rendered only once per fontSize, so changing any antialias setting, the glyph spacing or the glyph padding discards the glyphs already rendered.
 
+**Note**: `DrawText` also blends the alpha of the buffer, as the *over* operator of Porter and Duff does. An opaque buffer stays opaque. On a transparent buffer, the result has premultiplied alpha: blue, green and red are multiplied by the alpha. A buffer that already has translucent pixels must have premultiplied alpha too. The color of the text is not premultiplied.
+
 ### Classes
 
 - `FontBase` lays out and draws text with the glyphs a font already has. `DrawText`, `GetTextBox` and `GetGlyphQuads` are here.
@@ -82,7 +84,7 @@ font.DrawText("Hello", 16, color32, bufferDest, bufferDestStride, posX, posY);
 - The metrics file has the metrics of each height, the position of each glyph in the texture, and the kerning. It is a little-endian binary file, so it works the same on every platform.
 - The texture is an 8-bit grayscale TGA compressed with RLE, which most image programs read. It only has the used area of the texture. `FontBaked` reads it compressed or not, with its rows from the top down or from the bottom up. It also reads a TGA with alpha, see [Adding effects to the texture](#adding-effects-to-the-texture).
 
-You can convert the texture to another format, like PNG, and decode it yourself. Then pass the pixels to `FontBaked(metricsFile, texture, width, height, format)`, with `ETextureFormat::Alpha8` for one byte per texel or `ETextureFormat::BGRA32` for four: blue, green, red and alpha. The size must be the same. If the texture is only in the GPU, pass `nullptr`: `DrawText` then draws nothing, but `GetGlyphQuads` still works.
+You can convert the texture to another format, like PNG, and decode it yourself. Then pass the pixels to `FontBaked(metricsFile, texture, width, height, format)`, with `ETextureFormat::Alpha8` for one byte per texel, or `ETextureFormat::BGRA32` for four: blue, green, red and alpha. Use `ETextureFormat::BGRA32Premultiplied` instead if blue, green and red are already multiplied by the alpha. The size must be the same. If the texture is only in the GPU, pass `nullptr`: `DrawText` then draws nothing, but `GetGlyphQuads` still works.
 
 ### Adding effects to the texture
 
@@ -92,7 +94,7 @@ You can add effects to the saved texture with an image program, like a shadow, a
 2. If an effect is not symmetric about the diagonal, like a vertical gradient or a shadow that goes further right than down, call `SetAllowRotation(false)` too. The packer can rotate a glyph to fit it better, and it stores a rotated glyph transposed, so such an effect would look wrong on it.
 3. Save the font with `SaveBaked`, add the effects to the texture, with an image program or with a script like the one in [the effects example](#the-effects-example), and save it as a 32-bit TGA with alpha, compressed or not. The alpha must cover the text and its effects. Some programs save the alpha of a TGA from a separate alpha channel, not from the transparency of the layer, so check which one yours uses.
 
-`FontBaked` reads the 32-bit TGA as a `BGRA32` texture, which `GetTextureFormat` gives. It also reads a 16-bit grayscale TGA with alpha, as a `BGRA32` texture with the gray in blue, green and red. The texture keeps its alpha straight, not premultiplied: an alpha that the TGA 2.0 extension area marks as premultiplied is converted when the file is read.
+`FontBaked` reads the 32-bit TGA as a color texture. It also reads a 16-bit grayscale TGA with alpha, as a color texture with the gray in blue, green and red. It keeps a color texture with premultiplied alpha, so `GetTextureFormat` gives `BGRA32Premultiplied`: it multiplies blue, green and red by the alpha when it reads the texture. A TGA whose TGA 2.0 extension area says that the alpha is already premultiplied is kept as it is. `WriteTga` writes that extension area when you save a premultiplied texture with `ETgaAlpha::Premultiplied`.
 
 A TGA can say that it has no alpha. Some programs write an alpha without saying it, so `FontBaked` still uses the alpha if it changes from pixel to pixel. If it is the same in every pixel, there is no text in it, and `FontBaked` gives `EStatus::InvalidTexture`. It gives the same status for a color TGA with 24 bits, and for a texture whose size is not the one in the metrics file.
 
@@ -131,7 +133,7 @@ The repository already has the files of the three steps, so `exampleEffects` wor
 
 The packer can rotate a glyph to fit it better, unless you call `SetAllowRotation(false)`. A rotated glyph is stored transposed: the pixel (x, y) of the quad is the texel (textureRect.x + y, textureRect.y + x).
 
-`GetTextureFormat` says how to upload the texture. A `Font` always has an `Alpha8` texture, with one byte of coverage per texel. A `FontBaked` read from a TGA with alpha has a `BGRA32` texture, with the bytes blue, green, red and alpha, not premultiplied. It is the order of the TGA file and of the 32-bit window buffers of Windows, macOS and Linux, so `DrawText` does not reorder the channels. Upload it with `GL_BGRA` and `GL_UNSIGNED_BYTE` in OpenGL, or as `DXGI_FORMAT_B8G8R8A8_UNORM` in Direct3D. OpenGL ES and WebGL only accept `GL_BGRA` with an extension: upload the bytes as `GL_RGBA`, and swap red and blue in the shader with `.bgra`, which costs nothing.
+`GetTextureFormat` says how to upload the texture. A `Font` always has an `Alpha8` texture, with one byte of coverage per texel. A `FontBaked` with a color texture has a `BGRA32Premultiplied` texture: the bytes blue, green, red and alpha, with blue, green and red multiplied by the alpha. Draw it with the blend of premultiplied alpha, `glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)` in OpenGL or `D3D11_BLEND_ONE` and `D3D11_BLEND_INV_SRC_ALPHA` in Direct3D, and premultiply the color of the vertices too. Premultiplied alpha also filters correctly: bilinear filtering and mipmaps do not darken the edges of the effects. The byte order is the order of the TGA file and of the 32-bit window buffers of Windows, macOS and Linux, so `DrawText` does not reorder the channels. Upload it with `GL_BGRA` and `GL_UNSIGNED_BYTE` in OpenGL, or as `DXGI_FORMAT_B8G8R8A8_UNORM` in Direct3D. OpenGL ES and WebGL only accept `GL_BGRA` with an extension: upload the bytes as `GL_RGBA`, and swap red and blue in the shader with `.bgra`, which costs nothing.
 
 With `Font`, drawing or measuring text can render new glyphs and change the texture. `GetTextureVersion` changes every time the texels change, so compare it with the version you uploaded to know when to upload the texture again.
 
@@ -171,7 +173,7 @@ DOS support is minimal. DOS cannot map files, so the whole font is loaded into m
 
 You have two options:
 
-- Use CMake. Add FontRenderer with `add_subdirectory()` or `FetchContent`, and link against the `fontRenderer` target, as the examples do.
+- Use CMake. Add FontRenderer with `add_subdirectory()` or `FetchContent`, and link against the `FontRenderer::FontRenderer` target.
   These options choose what is built:
 
   |Option|Default|What it builds|

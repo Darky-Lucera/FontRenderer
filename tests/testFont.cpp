@@ -677,7 +677,8 @@ TEST_CASE_TEMPLATE("Font glyph quads place the texels where DrawText draws them"
             std::vector<uint32_t> expected(kWidth * kHeight, 0);
             font.DrawText(text, uint8_t(height), 0xffffffffu, expected.data(), kWidth, kPosX, kPosY);
 
-            // Blends white as DrawText does, so overlapping glyphs give the same result.
+            // Blends white as DrawText does, so overlapping glyphs give the same result. DrawText also blends the alpha
+            // of the buffer, which starts transparent, so the four channels of a pixel stay equal: not 255 in the alpha.
             std::vector<GlyphQuad> quads;
             font.GetGlyphQuads(text, uint8_t(height), quads);
             std::vector<uint32_t> buffer(kWidth * kHeight, 0);
@@ -693,8 +694,10 @@ TEST_CASE_TEMPLATE("Font glyph quads place the texels where DrawText draws them"
                         if(coverage != 0) {
                             uint32_t       &pixel   = buffer[size_t(kPosY + quad.y + y) * kWidth + size_t(kPosX + quad.x + x)];
                             const uint32_t previous = pixel & 0xff;
-                            const uint32_t channel  = (255 * coverage + previous * (255 - coverage)) / 255;
-                            pixel = 0xff000000u | (channel << 16) | (channel << 8) | channel;
+                            // Divided by 255 and rounded once, as Blinn does.
+                            const uint32_t sum      = 255 * coverage + previous * (255 - coverage) + 128;
+                            const uint32_t channel  = (sum + (sum >> 8)) >> 8;
+                            pixel = channel * 0x01010101u;
                         }
                     }
                 }

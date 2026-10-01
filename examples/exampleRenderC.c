@@ -166,7 +166,7 @@ render_atlas(fr_font *font, fr_font *text_font, const char *name, int32_t top) {
     fr_font_draw_text(text_font, label, 14, k_status_color, g_screen.buffer, g_screen.width, left, top);
     top += 22;
 
-    example_draw_texture(fr_font_get_texture(font), fr_font_get_texture_format(font) == FR_FONT_TEXTURE_FORMAT_BGRA32,
+    example_draw_texture(fr_font_get_texture(font), fr_font_get_texture_format(font) == FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED,
                          (int32_t) fr_font_get_texture_width(font), (int32_t) fr_font_get_texture_height(font), left, top, right, bottom);
 }
 

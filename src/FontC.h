@@ -71,8 +71,9 @@ enum {
 //-------------------------------------
 typedef int32_t fr_font_texture_format;
 enum {
-    FR_FONT_TEXTURE_FORMAT_ALPHA8 = 0,  // One byte of coverage per texel, drawn with the color of the text
-    FR_FONT_TEXTURE_FORMAT_BGRA32,      // Four bytes per texel: blue, green, red and alpha, not premultiplied
+    FR_FONT_TEXTURE_FORMAT_ALPHA8 = 0,           // One byte of coverage per texel, drawn with the color of the text
+    FR_FONT_TEXTURE_FORMAT_BGRA32,               // Four bytes per texel: blue, green, red and alpha, not premultiplied
+    FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED, // As BGRA32, with blue, green and red multiplied by the alpha
     FR_FONT_TEXTURE_FORMAT_INVALID = -1
 };
 
@@ -117,11 +118,14 @@ fr_status fr_font_create(const char *font_name, fr_font_backend backend, fr_font
 // Creates a font from the files fr_font_save_baked writes. It cannot render new glyphs, so the functions
 // that change how glyphs are rendered give FR_STATUS_INVALID_BACKEND, and their getters give 0, false or *_INVALID.
 // The texture can also be a 32-bit TGA with alpha, or a 16-bit grayscale TGA with alpha, which give an
-// FR_FONT_TEXTURE_FORMAT_BGRA32 texture. A texture it cannot use gives FR_STATUS_INVALID_TEXTURE.
+// FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED texture. The alpha is premultiplied unless the extension area of
+// TGA 2.0 says that it already is. A texture it cannot use gives FR_STATUS_INVALID_TEXTURE.
 // A library built without FONTRENDERER_USE_BAKED gives FR_STATUS_INVALID_BACKEND.
 fr_status fr_font_create_baked(const char *metrics_file, const char *texture_file, fr_font **out_font);
 // Takes the texture from memory instead of a TGA file, in rows of width texels. It is copied.
-// Without a texture, for one that is only in the GPU, fr_font_draw_text draws nothing.
+// An FR_FONT_TEXTURE_FORMAT_BGRA32 texture is premultiplied, so fr_font_get_texture_format gives
+// FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED. Without a texture, for one that is only in the GPU,
+// fr_font_draw_text draws nothing and fr_font_get_texture_format gives format.
 fr_status fr_font_create_baked_with_texture(const char *metrics_file, const uint8_t *texture, uint32_t width, uint32_t height,
                                             fr_font_texture_format format, fr_font **out_font);
 void      fr_font_destroy(fr_font *font);
@@ -183,8 +187,10 @@ bool      fr_font_get_allow_rotation(const fr_font *font);
 
 // The destination size is not known. Set clipping so every written pixel lies inside
 // the destination buffer. dst_stride is measured in uint32_t pixels, not bytes.
-// color is ARGB, and its alpha is used: with alpha 0 the text is invisible. With an FR_FONT_TEXTURE_FORMAT_BGRA32
-// texture, the color of each texel is multiplied by color, as a GPU does with the color of a vertex.
+// color is ARGB, and its alpha is used: with alpha 0 the text is invisible. With a color texture, the color of
+// each texel is multiplied by color, as a GPU does with the color of a vertex. The alpha of dst is blended too,
+// as the over operator of Porter and Duff does. Unlike color, dst must have premultiplied alpha, and so does the
+// result. An opaque pixel is the same either way.
 // text_height is the line height or the em size, as the size mode says. With 0 nothing is drawn.
 fr_status fr_font_draw_text(fr_font *font, const char *utf8, uint8_t text_height, uint32_t color,
                             uint32_t *dst, uint32_t dst_stride, int32_t pos_x, int32_t pos_y);

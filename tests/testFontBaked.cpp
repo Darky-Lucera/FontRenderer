@@ -169,7 +169,8 @@ TEST_CASE("FontBaked takes the texture from memory") {
     const std::vector<uint8_t> file = ReadFile(Test::kTexturePath);
     std::vector<uint8_t>       texture;
     uint32_t                   width = 0, height = 0, channels = 0;
-    REQUIRE(ReadTga(file.data(), file.size(), texture, width, height, channels));
+    ETgaAlpha                  alpha;
+    REQUIRE(ReadTga(file.data(), file.size(), texture, width, height, channels, alpha));
     REQUIRE(channels == 1);
     CHECK(reference.GetTextureFormat() == FontBase::ETextureFormat::Alpha8);
 
@@ -181,6 +182,7 @@ TEST_CASE("FontBaked takes the texture from memory") {
     FontBaked gpu(Test::kMetricsPath, nullptr, width, height, FontBase::ETextureFormat::BGRA32);
     REQUIRE(gpu.GetStatus() == Font::EStatus::Ok);
     CHECK(gpu.GetTexture() == nullptr);
+    // Without a texture there is nothing to premultiply: the format describes the one in the GPU, as it was given.
     CHECK(gpu.GetTextureFormat() == FontBase::ETextureFormat::BGRA32);
     CHECK(Draw(gpu, kTexts[1], 30) == std::vector<uint32_t>(400 * 160, 0));
 
@@ -202,18 +204,26 @@ TEST_CASE("FontBaked draws a BGRA32 texture multiplied by the color of the text"
     const std::vector<uint8_t> file = ReadFile(Test::kTexturePath);
     std::vector<uint8_t>       coverage;
     uint32_t                   width = 0, height = 0, channels = 0;
-    REQUIRE(ReadTga(file.data(), file.size(), coverage, width, height, channels));
+    ETgaAlpha                  alpha;
+    REQUIRE(ReadTga(file.data(), file.size(), coverage, width, height, channels, alpha));
 
     // White with the coverage as alpha draws the same as the coverage alone, whatever the color of the text.
-    std::vector<uint8_t> white;
-    for(uint8_t alpha : coverage) {
-        white.insert(white.end(), { 255, 255, 255, alpha });
+    // FontBaked premultiplies the alpha, so it keeps each texel as (alpha, alpha, alpha, alpha) and not as
+    // (255, 255, 255, alpha).
+    std::vector<uint8_t> white, premultipliedWhite;
+    for(uint8_t texelAlpha : coverage) {
+        white.insert(white.end(), { 255, 255, 255, texelAlpha });
+        premultipliedWhite.insert(premultipliedWhite.end(), { texelAlpha, texelAlpha, texelAlpha, texelAlpha });
     }
+    auto getTexture = [&](const FontBase &font) {
+        return std::vector<uint8_t>(font.GetTexture(), font.GetTexture() + white.size());
+    };
+
     REQUIRE(WriteTga(Test::kTexturePath, white.data(), width, height, size_t(width) * 4, 4, true));
     FontBaked baked(Test::kMetricsPath, Test::kTexturePath);
     REQUIRE(baked.GetStatus() == Font::EStatus::Ok);
-    CHECK(baked.GetTextureFormat() == FontBase::ETextureFormat::BGRA32);
-    CHECK(std::vector<uint8_t>(baked.GetTexture(), baked.GetTexture() + white.size()) == white);
+    CHECK(baked.GetTextureFormat() == FontBase::ETextureFormat::BGRA32Premultiplied);
+    CHECK(getTexture(baked) == premultipliedWhite);
 
     for(uint32_t color : { kWhite, 0x80ff8040u }) {
         for(const char *text : kTexts) {
@@ -227,6 +237,19 @@ TEST_CASE("FontBaked draws a BGRA32 texture multiplied by the color of the text"
         }
     }
 
+    // A TGA whose extension area says that its alpha is premultiplied is kept as it is, not premultiplied again.
+    REQUIRE(WriteTga(Test::kTexturePath, premultipliedWhite.data(), width, height, size_t(width) * 4, 4, true, ETgaAlpha::Premultiplied));
+    FontBaked marked(Test::kMetricsPath, Test::kTexturePath);
+    REQUIRE(marked.GetStatus() == Font::EStatus::Ok);
+    CHECK(marked.GetTextureFormat() == FontBase::ETextureFormat::BGRA32Premultiplied);
+    CHECK(getTexture(marked) == premultipliedWhite);
+
+    // In a broken premultiplied texture a color can be brighter than its alpha allows. FontBaked limits it to the
+    // alpha, so white (255, 255, 255, alpha) becomes (alpha, alpha, alpha, alpha).
+    FontBaked broken(Test::kMetricsPath, white.data(), width, height, FontBase::ETextureFormat::BGRA32Premultiplied);
+    REQUIRE(broken.GetStatus() == Font::EStatus::Ok);
+    CHECK(getTexture(broken) == premultipliedWhite);
+
     // The same texture as a 16-bit grayscale TGA with alpha, which WriteTga does not write.
     std::vector<uint8_t> grayAlpha(18, 0);
     grayAlpha[2]  = 3;
@@ -236,28 +259,31 @@ TEST_CASE("FontBaked draws a BGRA32 texture multiplied by the color of the text"
     grayAlpha[15] = uint8_t(height >> 8);
     grayAlpha[16] = 16;
     grayAlpha[17] = 0x28;
-    for(uint8_t alpha : coverage) {
-        grayAlpha.insert(grayAlpha.end(), { 255, alpha });
+    for(uint8_t texelAlpha : coverage) {
+        grayAlpha.insert(grayAlpha.end(), { 255, texelAlpha });
     }
     WriteFile(Test::kTexturePath, grayAlpha);
     FontBaked gray(Test::kMetricsPath, Test::kTexturePath);
     REQUIRE(gray.GetStatus() == Font::EStatus::Ok);
-    CHECK(gray.GetTextureFormat() == FontBase::ETextureFormat::BGRA32);
-    CHECK(std::vector<uint8_t>(gray.GetTexture(), gray.GetTexture() + white.size()) == white);
+    CHECK(gray.GetTextureFormat() == FontBase::ETextureFormat::BGRA32Premultiplied);
+    CHECK(getTexture(gray) == premultipliedWhite);
 
-    // A single glyph, so no pixel is blended twice. Blue 128, green 0 and red 255.
+    // A single glyph, so no pixel is blended twice. Blue 128, green 0 and red 255, not premultiplied.
     std::vector<uint8_t> tinted;
-    for(uint8_t alpha : coverage) {
-        tinted.insert(tinted.end(), { 128, 0, 255, alpha });
+    for(uint8_t texelAlpha : coverage) {
+        tinted.insert(tinted.end(), { 128, 0, 255, texelAlpha });
     }
     FontBaked                   tintedFont(Test::kMetricsPath, tinted.data(), width, height, FontBase::ETextureFormat::BGRA32);
     const std::vector<uint32_t> expected = Draw(reference, "H", 30);
     const std::vector<uint32_t> buffer   = Draw(tintedFont, "H", 30);
-    int                         wrongPixels = 0;
+    // Draw blends white over a transparent buffer. For a coverage m the reference leaves (m, m, m, m), and the tinted
+    // texture leaves its premultiplied texel, not (255, 255, 0, 128): alpha m, red m, green 0 and blue 128 * m / 255,
+    // rounded. 255 is odd, so that division never ends in .5 and adding 127 rounds it.
+    int wrongPixels = 0;
     for(size_t i = 0; i < buffer.size(); ++i) {
-        const uint32_t alpha = expected[i] & 0xff;
-        const uint32_t pixel = 0xff000000u | (alpha << 16) | (((128 * alpha) / 255) & 0xff);
-        if(buffer[i] != ((expected[i] == 0) ? 0 : pixel)) {
+        const uint32_t m     = expected[i] & 0xff;
+        const uint32_t pixel = (m << 24) | (m << 16) | ((128 * m + 127) / 255);
+        if(buffer[i] != pixel) {
             ++wrongPixels;
         }
     }

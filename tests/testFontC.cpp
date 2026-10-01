@@ -216,9 +216,24 @@ TEST_CASE("Font C API saves and loads baked fonts") {
     CHECK(count == 5);
     fr_font_destroy(gpu);
 
+    // A premultiplied white texel (m, m, m, m) draws as the coverage m.
+    const uint8_t        *coverage = fr_font_get_texture(baked);
+    std::vector<uint8_t> white;
+    for(size_t i = 0; i < size_t(width) * height; ++i) {
+        white.insert(white.end(), 4, coverage[i]);
+    }
+    fr_font *color = nullptr;
+    REQUIRE(fr_font_create_baked_with_texture(kMetricsPath, white.data(), width, height, FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED, &color) == FR_STATUS_OK);
+    CHECK(fr_font_get_texture(color) != nullptr);
+    CHECK(fr_font_get_texture_format(color) == FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED);
+    std::vector<uint32_t> colorBuffer(128 * 64, 0);
+    CHECK(fr_font_draw_text(color, kText, 24, 0xffffffffu, colorBuffer.data(), 128, 4, 4) == FR_STATUS_OK);
+    CHECK(colorBuffer == expected);
+    fr_font_destroy(color);
+
     CHECK(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width + 1, height, FR_FONT_TEXTURE_FORMAT_ALPHA8, &gpu) == FR_STATUS_INVALID_TEXTURE);
     CHECK(gpu == nullptr);
-    CHECK(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width, height, 2, &gpu) == FR_STATUS_INVALID_ARGUMENT);
+    CHECK(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width, height, FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED + 1, &gpu) == FR_STATUS_INVALID_ARGUMENT);
     CHECK(fr_font_create_baked_with_texture(kMetricsPath, nullptr, width, height, FR_FONT_TEXTURE_FORMAT_INVALID, &gpu) == FR_STATUS_INVALID_ARGUMENT);
     CHECK(gpu == nullptr);
 

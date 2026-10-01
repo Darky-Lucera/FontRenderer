@@ -27,11 +27,13 @@ namespace MindShake {
     class FontBaked : public FontBase {
         public:
             // The texture is read from an 8-bit grayscale TGA, like the one Font::SaveBaked writes, which gives an Alpha8
-            // texture, or from a 32-bit TGA with alpha or a 16-bit grayscale TGA with alpha, which give a BGRA32 texture.
+            // texture, or from a 32-bit TGA with alpha or a 16-bit grayscale TGA with alpha, which give a BGRA32Premultiplied
+            // texture. The alpha is premultiplied unless the extension area of TGA 2.0 says that it already is.
             // A texture it cannot use, like a color TGA without alpha, gives InvalidTexture.
             FontBaked(const char *metricsFile, const char *textureFile);
             // The texture is in rows of width texels, and it is copied. Its size must be the one Font::SaveBaked saved.
-            // Without a texture, for one that is only in the GPU, DrawText draws nothing.
+            // A BGRA32 texture is premultiplied, so GetTextureFormat gives BGRA32Premultiplied.
+            // Without a texture, for one that is only in the GPU, DrawText draws nothing and GetTextureFormat gives format.
             FontBaked(const char *metricsFile, const uint8_t *texture, uint32_t width, uint32_t height, ETextureFormat format);
 
         protected:

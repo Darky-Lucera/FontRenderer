@@ -8,6 +8,7 @@
 #include "FontBaked.h"
 #include "Tga.h"
 //-------------------------------------
+#include <algorithm>
 #include <new>
 
 using namespace MindShake;
@@ -72,11 +73,17 @@ FontBaked::LoadTexture(const char *textureFile) {
 
     std::vector<uint8_t> pixels;
     uint32_t             width, height, channels;
-    if(ReadTga(file.GetData(), file.GetSize(), pixels, width, height, channels) == false) {
+    ETgaAlpha            alpha;
+    if(ReadTga(file.GetData(), file.GetSize(), pixels, width, height, channels, alpha) == false) {
         return EStatus::InvalidTexture;
     }
 
-    return SetTexture(pixels.data(), width, height, (channels == 4) ? ETextureFormat::BGRA32 : ETextureFormat::Alpha8);
+    ETextureFormat format = ETextureFormat::Alpha8;
+    if(channels == 4) {
+        format = (alpha == ETgaAlpha::Premultiplied) ? ETextureFormat::BGRA32Premultiplied : ETextureFormat::BGRA32;
+    }
+
+    return SetTexture(pixels.data(), width, height, format);
 }
 
 //-------------------------------------
@@ -87,10 +94,25 @@ FontBaked::SetTexture(const uint8_t *texture, uint32_t width, uint32_t height, E
         return EStatus::InvalidTexture;
     }
 
-    mTextureFormat = format;
+    // Without a texture, the format describes the copy the program keeps, like one in the GPU.
     if(texture != nullptr) {
-        mTexture.assign(texture, texture + size_t(width) * height * GetBytesPerTexel(format));
+        const size_t texelCount = size_t(width) * height;
+        mTexture.assign(texture, texture + texelCount * GetBytesPerTexel(format));
+        if(format == ETextureFormat::BGRA32) {
+            PremultiplyTexels(mTexture.data(), texelCount);
+            format = ETextureFormat::BGRA32Premultiplied;
+        }
+        else if(format == ETextureFormat::BGRA32Premultiplied) {
+            // A broken texture can have a color brighter than its alpha allows, and DrawText needs it not to:
+            // otherwise its blend overflows into the next channel.
+            for(size_t i = 0; i < mTexture.size(); i += 4) {
+                for(size_t channel = i; channel < i + 3; ++channel) {
+                    mTexture[channel] = std::min(mTexture[channel], mTexture[i + 3]);
+                }
+            }
+        }
     }
+    mTextureFormat = format;
 
     return EStatus::Ok;
 }

@@ -120,10 +120,10 @@ main(int argc, char *argv[]) {
     // The clip rectangle would frame the whole window. C still shows it.
     g_screen.show_clipping = false;
 
-    const bool bgra = font.GetTextureFormat() == MindShake::FontBase::ETextureFormat::BGRA32;
+    const bool bgra = font.GetTextureFormat() == MindShake::FontBase::ETextureFormat::BGRA32Premultiplied;
     char       status[192];
     if (hasEffects) {
-        snprintf(status, sizeof(status), u8"Texture: %s, %s · T atlas · Esc: exit", texturePath, bgra ? "BGRA32" : "Alpha8");
+        snprintf(status, sizeof(status), u8"Texture: %s, %s · T atlas · Esc: exit", texturePath, bgra ? "BGRA32 premultiplied" : "Alpha8");
     }
     else {
         snprintf(status, sizeof(status), u8"Texture: %s, without effects: tools/add_effects.py makes %s · T atlas · Esc: exit",

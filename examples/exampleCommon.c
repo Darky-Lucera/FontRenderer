@@ -121,10 +121,13 @@ example_release(void) {
 void
 example_clear(void) {
     uint32_t *row = g_screen.buffer;
-    uint32_t  y;
+    uint32_t  x, y;
     for(y = 0; y < g_screen.height; ++y) {
-        const uint8_t shade = (uint8_t) (32 + (y * 128) / g_screen.height);
-        memset(row, shade, (size_t) g_screen.width * sizeof(*row));
+        const uint32_t shade = 32 + (y * 128) / g_screen.height;
+        const uint32_t color = UINT32_C(0xff000000) | (shade * UINT32_C(0x010101));
+        for(x = 0; x < g_screen.width; ++x) {
+            row[x] = color;
+        }
         row += g_screen.width;
     }
 }
@@ -190,8 +193,11 @@ example_draw_texture(const uint8_t *texels, bool bgra, int32_t width, int32_t he
             const size_t   texel   = (size_t) texel_y * (size_t) width + (size_t) texel_x;
             if(bgra) {
                 const uint8_t  *bgra_texel = &texels[texel * 4];
-                const uint32_t color       = UINT32_C(0xff000000) | ((uint32_t) bgra_texel[2] << 16) | ((uint32_t) bgra_texel[1] << 8) | bgra_texel[0];
-                row[x] = example_blend(square, color, bgra_texel[3]);
+                const uint32_t inverse     = 255u - bgra_texel[3];
+                const uint32_t r           = bgra_texel[2] + (((square >> 16) & 0xff) * inverse) / 255;
+                const uint32_t g           = bgra_texel[1] + (((square >>  8) & 0xff) * inverse) / 255;
+                const uint32_t b           = bgra_texel[0] + (( square        & 0xff) * inverse) / 255;
+                row[x] = UINT32_C(0xff000000) | (r << 16) | (g << 8) | b;
             }
             else {
                 row[x] = example_blend(square, UINT32_C(0xffffffff), texels[texel]);

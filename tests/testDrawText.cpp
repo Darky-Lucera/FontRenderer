@@ -257,3 +257,53 @@ TEST_CASE_TEMPLATE("Font clipping draws exactly the part of the text inside the 
         CHECK(wrongPixels == 0);
     }
 }
+
+//-------------------------------------
+TEST_CASE("DrawText blends the alpha of the destination") {
+    const int kWidth = 64, kHeight = 64;
+    // Translucent red: premultiplied by its alpha, it is (128, 128, 0, 0).
+    const uint32_t kColor = 0x80ff0000u;
+
+    Test::DefaultFont font(Test::kFontPath);
+    font.SetAntialias(true);
+
+    std::vector<uint32_t> transparent(kWidth * kHeight, 0);
+    font.DrawText("A", 40, kColor, transparent.data(), kWidth, 8, 4);
+    std::vector<uint32_t> opaque(kWidth * kHeight, 0xff204060u);
+    font.DrawText("A", 40, kColor, opaque.data(), kWidth, 8, 4);
+
+    // Over transparent black, each pixel is the premultiplied color scaled by the coverage, so its red is its alpha,
+    // not 255. Over an opaque buffer, the alpha stays 255.
+    int drawn = 0, wrongPixels = 0;
+    for(size_t i = 0; i < transparent.size(); ++i) {
+        const uint32_t alpha = transparent[i] >> 24;
+        drawn += (alpha != 0) ? 1 : 0;
+        if(transparent[i] != ((alpha << 24) | (alpha << 16)) || (opaque[i] >> 24) != 255) {
+            ++wrongPixels;
+        }
+    }
+    CHECK(drawn > 0);
+    CHECK(wrongPixels == 0);
+
+    // A translucent destination is premultiplied too: here (64, 32, 16) with alpha 128. Each channel becomes
+    // source + dst * (255 - source alpha) / 255, rounded once. Opaque white over transparent black gives the coverage.
+    std::vector<uint32_t> coverage(kWidth * kHeight, 0);
+    font.DrawText("A", 40, kWhite, coverage.data(), kWidth, 8, 4);
+    std::vector<uint32_t> translucent(kWidth * kHeight, 0x80402010u);
+    font.DrawText("A", 40, kColor, translucent.data(), kWidth, 8, 4);
+
+    auto over = [](uint32_t source, uint32_t dst, uint32_t sourceAlpha) {
+        return (source + dst * (255 - sourceAlpha) + 127) / 255;
+    };
+    wrongPixels = 0;
+    for(size_t i = 0; i < translucent.size(); ++i) {
+        const uint32_t source      = 128 * (coverage[i] >> 24);
+        const uint32_t sourceAlpha = (source + 127) / 255;
+        const uint32_t expected    = (over(source, 0x80, sourceAlpha) << 24) | (over(source, 0x40, sourceAlpha) << 16) |
+                                     (over(0, 0x20, sourceAlpha) << 8) | over(0, 0x10, sourceAlpha);
+        if(translucent[i] != expected) {
+            ++wrongPixels;
+        }
+    }
+    CHECK(wrongPixels == 0);
+}

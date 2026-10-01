@@ -115,15 +115,16 @@ namespace {
 
     //---------------------------------
     void
-    Unpremultiply(std::vector<uint8_t> &pixels) {
-        for(size_t i = 0; i < pixels.size(); i += 4) {
-            const uint32_t alpha = pixels[i + 3];
-            for(size_t channel = i; channel < i + 3; ++channel) {
-                // A broken file can have a color brighter than its alpha allows.
-                const uint32_t color = (alpha == 0) ? 0 : (pixels[channel] * 255 + alpha / 2) / alpha;
-                pixels[channel] = uint8_t(std::min<uint32_t>(color, 255));
-            }
-        }
+    AddPremultipliedExtension(std::vector<uint8_t> &output) {
+        const size_t offset = output.size();
+        output.resize(offset + kExtensionSize, 0);
+        SetU16(&output[offset], uint32_t(kExtensionSize));
+        output[offset + kAttributesTypeOffset] = kAttributesPremultiplied;
+
+        output.resize(output.size() + 8, 0);            // Without a developer area
+        SetU16(&output[output.size() - 8], uint32_t(offset));
+        SetU16(&output[output.size() - 6], uint32_t(offset >> 16));
+        output.insert(output.end(), kSignature, kSignature + sizeof(kSignature));
     }
 
     //---------------------------------
@@ -211,7 +212,8 @@ namespace {
 
 //-------------------------------------
 bool
-MindShake::WriteTga(const char *fileName, const uint8_t *pixels, uint32_t width, uint32_t height, size_t stride, uint32_t channels, bool compress) {
+MindShake::WriteTga(const char *fileName, const uint8_t *pixels, uint32_t width, uint32_t height, size_t stride, uint32_t channels,
+                    bool compress, ETgaAlpha alpha) {
     if(fileName == nullptr || pixels == nullptr || width == 0 || height == 0 || width > kMaxSize || height > kMaxSize ||
        IsValidChannelCount(channels) == false || stride < size_t(width) * channels) {
         return false;
@@ -241,6 +243,13 @@ MindShake::WriteTga(const char *fileName, const uint8_t *pixels, uint32_t width,
             output.insert(output.end(), row, row + rowSize);
         }
     }
+    if(gray == false && alpha == ETgaAlpha::Premultiplied) {
+        // The footer holds the offset of the extension area in 32 bits.
+        if(uint64_t(output.size()) > UINT32_MAX) {
+            return false;
+        }
+        AddPremultipliedExtension(output);
+    }
 
     FILE *file = fopen(fileName, "wb");
     if(file == nullptr) {
@@ -253,7 +262,8 @@ MindShake::WriteTga(const char *fileName, const uint8_t *pixels, uint32_t width,
 
 //-------------------------------------
 bool
-MindShake::ReadTga(const uint8_t *data, size_t size, std::vector<uint8_t> &pixels, uint32_t &width, uint32_t &height, uint32_t &channels) {
+MindShake::ReadTga(const uint8_t *data, size_t size, std::vector<uint8_t> &pixels, uint32_t &width, uint32_t &height, uint32_t &channels,
+                   ETgaAlpha &alpha) {
     if(data == nullptr || size < kHeaderSize) {
         return false;
     }
@@ -277,6 +287,10 @@ MindShake::ReadTga(const uint8_t *data, size_t size, std::vector<uint8_t> &pixel
     const uint8_t *source     = data + kHeaderSize + idLength;
     const size_t  sourceSize  = size - kHeaderSize - idLength;
     const size_t  pixelCount  = size_t(imageWidth) * imageHeight;
+    // A pixel takes up to 4 bytes in memory, more than a 32-bit size_t can count for the biggest images.
+    if(pixelCount > SIZE_MAX / 4) {
+        return false;
+    }
     const size_t  byteCount   = pixelCount * pixelSize;
     if(type == kUncompressedGray || type == kUncompressedColor) {
         if(sourceSize < byteCount) {
@@ -285,6 +299,12 @@ MindShake::ReadTga(const uint8_t *data, size_t size, std::vector<uint8_t> &pixel
         pixels.assign(source, source + byteCount);
     }
     else {
+        // A packet takes at least 1 + pixelSize bytes and gives at most kMaxPacketPixels pixels, so a short file
+        // that declares a huge image is rejected before reserving its memory.
+        const size_t minPackets = (pixelCount + kMaxPacketPixels - 1) / kMaxPacketPixels;
+        if(sourceSize < minPackets * (1 + pixelSize)) {
+            return false;
+        }
         pixels.resize(byteCount);
         if(Decompress(source, sourceSize, pixels.data(), pixelCount, pixelSize) == false) {
             return false;
@@ -300,26 +320,22 @@ MindShake::ReadTga(const uint8_t *data, size_t size, std::vector<uint8_t> &pixel
         }
     }
 
+    EAlpha declared = EAlpha::Straight;
     if(pixelSize > 1) {
-        EAlpha alpha = GetDeclaredAlpha(data, size);
-        if(alpha == EAlpha::None) {
-            if(AlphaVaries(pixels, pixelSize) == false) {
-                return false;
-            }
-            alpha = EAlpha::Straight;
+        declared = GetDeclaredAlpha(data, size);
+        if(declared == EAlpha::None && AlphaVaries(pixels, pixelSize) == false) {
+            return false;
         }
 
         if(pixelSize == 2) {
             ConvertGrayToColor(pixels, pixelCount);
-        }
-        if(alpha == EAlpha::Premultiplied) {
-            Unpremultiply(pixels);
         }
     }
 
     width    = imageWidth;
     height   = imageHeight;
     channels = (pixelSize > 1) ? 4 : 1;
+    alpha    = (declared == EAlpha::Premultiplied) ? ETgaAlpha::Premultiplied : ETgaAlpha::Straight;
 
     return true;
 }

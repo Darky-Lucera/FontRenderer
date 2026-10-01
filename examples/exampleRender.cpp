@@ -176,7 +176,7 @@ RenderAtlas(const MindShake::FontBase &font, MindShake::FontBase &textFont, cons
     textFont.DrawText(label, 14, kStatusColor, g_screen.buffer, g_screen.width, left, top);
     top += 22;
 
-    const bool bgra = font.GetTextureFormat() == MindShake::FontBase::ETextureFormat::BGRA32;
+    const bool bgra = font.GetTextureFormat() == MindShake::FontBase::ETextureFormat::BGRA32Premultiplied;
     example_draw_texture(font.GetTexture(), bgra, int32_t(font.GetTextureWidth()), int32_t(font.GetTextureHeight()), left, top, right, bottom);
 }
 

@@ -51,6 +51,7 @@ static_assert(FR_FONT_SIZE_MODE_EM_SIZE     == int(MindShake::Font::ESizeMode::E
 
 static_assert(FR_FONT_TEXTURE_FORMAT_ALPHA8 == int(MindShake::FontBase::ETextureFormat::Alpha8), "fr_font_texture_format must match FontBase::ETextureFormat");
 static_assert(FR_FONT_TEXTURE_FORMAT_BGRA32 == int(MindShake::FontBase::ETextureFormat::BGRA32), "fr_font_texture_format must match FontBase::ETextureFormat");
+static_assert(FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED == int(MindShake::FontBase::ETextureFormat::BGRA32Premultiplied), "fr_font_texture_format must match FontBase::ETextureFormat");
 
 static_assert(FR_FONT_PACKING_LEVEL_BOTTOM_LEFT   == int(MindShake::Font::ELevelChoiceHeuristic::LevelBottomLeft),  "fr_font_packing_heuristic must match Font::ELevelChoiceHeuristic");
 static_assert(FR_FONT_PACKING_LEVEL_MIN_WASTE_FIT == int(MindShake::Font::ELevelChoiceHeuristic::LevelMinWasteFit), "fr_font_packing_heuristic must match Font::ELevelChoiceHeuristic");
@@ -322,6 +323,10 @@ fr_font_create_baked_with_texture(const char *metrics_file, const uint8_t *textu
             value = MindShake::FontBase::ETextureFormat::BGRA32;
             break;
 
+        case FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED:
+            value = MindShake::FontBase::ETextureFormat::BGRA32Premultiplied;
+            break;
+
         default:
             return FR_STATUS_INVALID_ARGUMENT;
     }
@@ -416,6 +421,9 @@ fr_font_get_texture_format(const fr_font *font) {
 
         case MindShake::FontBase::ETextureFormat::BGRA32:
             return FR_FONT_TEXTURE_FORMAT_BGRA32;
+
+        case MindShake::FontBase::ETextureFormat::BGRA32Premultiplied:
+            return FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED;
     }
 
     return FR_FONT_TEXTURE_FORMAT_INVALID;
