@@ -307,3 +307,46 @@ TEST_CASE("DrawText blends the alpha of the destination") {
     }
     CHECK(wrongPixels == 0);
 }
+
+//-------------------------------------
+TEST_CASE("DrawText draws an opaque text with the same blend as a translucent one") {
+    const int kWidth = 96, kHeight = 64;
+    // An opaque color takes its own loop, which does not blend a texel of coverage 255.
+    const uint32_t kColor = 0xff40c080u;
+
+    // Without SetAntialias, whose filter leaves no texel of these glyphs at 255.
+    Test::DefaultFont font(Test::kFontPath);
+
+    std::vector<uint32_t> coverage(kWidth * kHeight, 0);
+    font.DrawText("Ag", 40, kWhite, coverage.data(), kWidth, 8, 4);
+
+    // A destination that changes from pixel to pixel, opaque in one half and translucent, so premultiplied, in the other.
+    std::vector<uint32_t> expected(kWidth * kHeight);
+    for(size_t i = 0; i < expected.size(); ++i) {
+        const uint32_t x     = uint32_t(i % kWidth);
+        const uint32_t y     = uint32_t(i / kWidth);
+        const uint32_t alpha = (x < kWidth / 2) ? 255u : 160u;
+        expected[i] = (alpha << 24) | ((((x * 5) & 0xff) * alpha / 255) << 16) | ((((y * 7) & 0xff) * alpha / 255) << 8) | (((x ^ y) & 0xff) * alpha / 255);
+    }
+    std::vector<uint32_t> buffer = expected;
+    font.DrawText("Ag", 40, kColor, buffer.data(), kWidth, 8, 4);
+
+    // Each channel is color * coverage + dst * (255 - coverage), divided by 255 and rounded once.
+    int full = 0, partial = 0;
+    for(size_t i = 0; i < expected.size(); ++i) {
+        const uint32_t m = coverage[i] >> 24;
+        full    += (m == 255) ? 1 : 0;
+        partial += (m > 0 && m < 255) ? 1 : 0;
+
+        uint32_t pixel = 0;
+        for(uint32_t shift = 0; shift < 32; shift += 8) {
+            const uint32_t source = ((kColor >> shift) & 0xff) * m;
+            const uint32_t dst    = (expected[i] >> shift) & 0xff;
+            pixel |= ((source + dst * (255 - m) + 127) / 255) << shift;
+        }
+        expected[i] = pixel;
+    }
+    CHECK(full > 0);
+    CHECK(partial > 0);
+    CHECK(buffer == expected);
+}

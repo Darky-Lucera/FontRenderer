@@ -225,7 +225,8 @@ TEST_CASE("FontBaked draws a BGRA32 texture multiplied by the color of the text"
     CHECK(baked.GetTextureFormat() == FontBase::ETextureFormat::BGRA32Premultiplied);
     CHECK(getTexture(baked) == premultipliedWhite);
 
-    for(uint32_t color : { kWhite, 0x80ff8040u }) {
+    // An opaque color that is not white, so that the loop for an opaque text also has to tint the texel.
+    for(uint32_t color : { kWhite, 0xff40c080u, 0x80ff8040u }) {
         for(const char *text : kTexts) {
             CAPTURE(color);
             CAPTURE(text);

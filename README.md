@@ -42,6 +42,8 @@ font.DrawText(text, fontSize, color32, bufferDest, bufferDestStride, posX, posY)
 
 **Note**: Each glyph is rendered only once per fontSize, so changing any antialias setting, the glyph spacing or the glyph padding discards the glyphs already rendered.
 
+**Note**: By default the packer can rotate a glyph to fit more glyphs in the texture. With the SSE2 and NEON code, a rotated glyph usually draws more slowly: between 6 and 30 % slower in our benchmarks, on x86 with GCC and MSVC, an Apple M1, a Cortex-A78 and a Cortex-A55. There are exceptions: on x86, glyphs of 96 pixels drew faster rotated, and so did glyphs of 24 and 40 pixels on the Cortex-A55. The scalar code draws both at the same speed. If drawing speed matters more than texture space, call `SetAllowRotation(false)` before rendering the glyphs.
+
 **Note**: `DrawText` also blends the alpha of the buffer, as the *over* operator of Porter and Duff does. An opaque buffer stays opaque. On a transparent buffer, the result has premultiplied alpha: blue, green and red are multiplied by the alpha. A buffer that already has translucent pixels must have premultiplied alpha too. The color of the text is not premultiplied.
 
 ### Classes
@@ -182,6 +184,7 @@ You have two options:
   |`FONTRENDERER_USE_LIBSCHRIFT`|`ON`|The libschrift backend, `FontSFT`|
   |`FONTRENDERER_USE_FREETYPE`|`OFF`|The FreeType backend, `FontFT`. CMake uses the FreeType installed in the system, and downloads it if there is none|
   |`FONTRENDERER_USE_BAKED`|`ON`|The backend that reads baked fonts, `FontBaked`|
+  |`FONTRENDERER_DISABLE_SIMD`|`OFF`|Only the scalar drawing code. By default the text is drawn with SSE2 where the compiler may use it, always on x86 of 64 bits, and with NEON on ARM64|
   |`FONTRENDERER_BUILD_EXAMPLES`|`ON` only when FontRenderer is the main project|The examples, which show every backend that is on. The [effects example](#the-effects-example) also needs `FONTRENDERER_USE_BAKED`. They download MiniFB, unless the project that adds FontRenderer already has a `minifb` target|
   |`FONTRENDERER_BUILD_TESTS`|`ON` only when FontRenderer is the main project|The unit tests|
 
@@ -194,8 +197,13 @@ You have two options:
 
   - FontBase.h
   - FontBase.cpp
+  - GlyphDraw.h
+  - GlyphDraw.cpp
+  - GlyphDrawNeon.cpp
+  - GlyphDrawSse2.cpp
   - MappedFile.h
   - MappedFile.cpp
+  - Platform.h
   - SkylineBinPack.h
   - Tga.h
   - Tga.cpp
@@ -254,7 +262,7 @@ You have two options:
 
 FontRenderer is distributed under the Boost Software License 1.0, see [LICENSE](LICENSE).
 
-The licenses of the third party code and fonts in this repository are in [LICENSES](LICENSES): stb_truetype, libschrift, doctest, and the Roboto, DejaVu and Lilita One fonts used by the examples and the tests. The textures in `bin/resources` are baked from Lilita One.
+The licenses of the third party code and fonts in this repository are in [LICENSES](LICENSES): stb_truetype, libschrift, pixman, doctest, and the Roboto, DejaVu and Lilita One fonts used by the examples and the tests. The textures in `bin/resources` are baked from Lilita One.
 
 CMake downloads MiniFB for the examples, and FreeType when `FONTRENDERER_USE_FREETYPE` is on and the system has none. They are not part of this repository and have their own licenses. If your program uses the FreeType backend, it includes FreeType, whose license (the FreeType License or the GPLv2, as you choose) asks you to credit FreeType in your documentation.
 

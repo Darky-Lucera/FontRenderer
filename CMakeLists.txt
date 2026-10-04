@@ -12,10 +12,12 @@ else()
 endif()
 option(FONTRENDERER_BUILD_EXAMPLES   "Build the examples, which need MiniFB"                ${FONTRENDERER_IS_TOP_LEVEL})
 option(FONTRENDERER_BUILD_TESTS      "Build the unit tests"                                 ${FONTRENDERER_IS_TOP_LEVEL})
+
 option(FONTRENDERER_USE_STB          "Build the stb_truetype backend"                       ON)
 option(FONTRENDERER_USE_LIBSCHRIFT   "Build the libschrift backend"                         ON)
 option(FONTRENDERER_USE_FREETYPE     "Build the FreeType backend"                           OFF)
 option(FONTRENDERER_USE_BAKED        "Build the backend that reads baked fonts"             ON)
+option(FONTRENDERER_DISABLE_SIMD     "Draw only with the scalar code, no SSE2 or NEON"      OFF)
 
 if (FONTRENDERER_USE_STB OR FONTRENDERER_USE_LIBSCHRIFT OR FONTRENDERER_USE_FREETYPE)
     set(FONTRENDERER_HAS_RASTERIZER ON)
@@ -104,9 +106,13 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FontRendererHelpers.cmake")
 
 # Set output directory
 #--------------------------------------
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
-SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/bin)
-SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin)
+# A program for Android or iOS runs on the device, so it stays in the build folder. In bin it would replace the
+# program of the same name built for macOS or Linux, or for another processor of the device.
+if (NOT ANDROID AND NOT IOS)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+    SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/bin)
+    SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin)
+endif()
 
 # Library
 #--------------------------------------
@@ -115,13 +121,47 @@ set(SRC_FontRenderer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontC.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontC.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDraw.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDraw.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MappedFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MappedFile.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Platform.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Tga.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Tga.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/UTF8_Utils.h
 )
+
+# Without an x86 processor GlyphDrawSse2.cpp compiles to nothing, and the tool that builds the library on macOS
+# warns about an object file without symbols. The check only passes when no architecture of the build is x86:
+# a universal build of macOS, which has both, still needs the file.
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles([=[
+    #if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
+        #error The target is x86
+    #endif
+    int main() { return 0; }
+]=] FONTRENDERER_TARGET_WITHOUT_X86)
+
+if (NOT FONTRENDERER_DISABLE_SIMD AND NOT FONTRENDERER_TARGET_WITHOUT_X86)
+    list(APPEND SRC_FontRenderer
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawSse2.cpp
+    )
+endif()
+
+# The same for GlyphDrawNeon.cpp and ARM: a universal build of macOS needs the file for its ARM architecture.
+check_cxx_source_compiles([=[
+    #if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
+        #error The target is ARM
+    #endif
+    int main() { return 0; }
+]=] FONTRENDERER_TARGET_WITHOUT_ARM)
+
+if (NOT FONTRENDERER_DISABLE_SIMD AND NOT FONTRENDERER_TARGET_WITHOUT_ARM)
+    list(APPEND SRC_FontRenderer
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawNeon.cpp
+    )
+endif()
 
 if (FONTRENDERER_HAS_RASTERIZER)
     list(APPEND SRC_FontRenderer
@@ -219,6 +259,14 @@ if (FONTRENDERER_USE_BAKED)
     )
 endif()
 
+# Public, because the header that declares the drawing functions leaves out the SSE2 and NEON ones with it.
+if (FONTRENDERER_DISABLE_SIMD)
+    target_compile_definitions(fontRenderer
+    PUBLIC
+        FONTRENDERER_DISABLE_SIMD
+    )
+endif()
+
 #--------------------------------------
 if (FONTRENDERER_BUILD_EXAMPLES)
     set(SRC_ExampleCommon
@@ -266,6 +314,7 @@ if (FONTRENDERER_BUILD_TESTS)
     enable_testing()
 
     set(SRC_UnitTests
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testGlyphDraw.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testMain.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testTga.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testUTF8.cpp

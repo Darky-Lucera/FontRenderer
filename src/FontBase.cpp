@@ -6,6 +6,7 @@
 //-----------------------------------------------------------------------------
 
 #include "FontBase.h"
+#include "GlyphDraw.h"
 #include "UTF8_Utils.h"
 //-------------------------------------
 #include <algorithm>
@@ -104,67 +105,6 @@ namespace {
         return (fclose(file) == 0) && written;
     }
 
-    // Two channels of 0xAARRGGBB are blended at once, each in 16 bits of a uint32_t: blue and red, and green and alpha.
-    constexpr uint32_t kPairMask = 0x00ff00ff;
-
-    // (a * b) / 255 rounded to the nearest integer, exact for any a and b from 0 to 255 (Jim Blinn).
-    //---------------------------------
-    inline uint32_t
-    MulDiv255(uint32_t a, uint32_t b) {
-        const uint32_t t = a * b + 0x80;
-        return ((t >> 8) + t) >> 8;
-    }
-
-    // The values in the bits 0 to 15 and 16 to 31 divided by 255, rounded as MulDiv255 does. Exact up to 65662.
-    //---------------------------------
-    inline uint32_t
-    Div255Pair(uint32_t values) {
-        const uint32_t t = values + 0x00800080;
-        return ((t + ((t >> 8) & kPairMask)) >> 8) & kPairMask;
-    }
-
-    // The products of the channels in the bits 0 to 7 and 16 to 23 of x and a, channel by channel, in 16 bits each.
-    //---------------------------------
-    inline uint32_t
-    MulPairByPair(uint32_t x, uint32_t a) {
-        return (x & 0xff) * (a & 0xff) | (x & 0x00ff0000) * ((a >> 16) & 0xff);
-    }
-
-    //---------------------------------
-    inline uint32_t
-    PremultiplyColor(uint32_t color) {
-        const uint32_t alpha = color >> 24;
-        return (alpha << 24) | (MulDiv255((color >> 16) & 0xff, alpha) << 16) | (MulDiv255((color >> 8) & 0xff, alpha) << 8) |
-               MulDiv255(color & 0xff, alpha);
-    }
-
-    // The source is premultiplied and not yet divided by 255. Adding the pixel before dividing rounds each channel
-    // once. With a premultiplied texel, whose channels do not exceed its alpha, the sum is at most 65152, so it fits
-    // in 16 bits and the result does not exceed 255.
-    //---------------------------------
-    inline uint32_t
-    Blend(uint32_t pixel, uint32_t sourceBlueRed, uint32_t sourceGreenAlpha, uint32_t alpha) {
-        const uint32_t inverse    = 255 - alpha;
-        const uint32_t blueRed    = Div255Pair(sourceBlueRed    + (pixel & kPairMask) * inverse);
-        const uint32_t greenAlpha = Div255Pair(sourceGreenAlpha + ((pixel >> 8) & kPairMask) * inverse);
-        return blueRed | (greenAlpha << 8);
-    }
-
-    // Calls blend(texel, pixel) for each texel of a glyph, from offset, and the pixel of dst it goes to.
-    //---------------------------------
-    template <size_t kBytesPerTexel, class TBlend>
-    void
-    DrawTexels(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
-               uint32_t *dst, uint32_t dstStride, TBlend blend) {
-        for(int32_t y = 0; y < height; ++y, offset += stepY) {
-            uint32_t *row   = &dst[size_t(y) * dstStride];
-            size_t   texel  = offset;
-            for(int32_t x = 0; x < width; ++x, texel += stepX) {
-                blend(&texture[texel * kBytesPerTexel], row[x]);
-            }
-        }
-    }
-
 } // end of namespace
 
 //-------------------------------------
@@ -216,9 +156,9 @@ void
 FontBase::PremultiplyTexels(uint8_t *texels, size_t texelCount) {
     for(size_t i = 0; i < texelCount * 4; i += 4) {
         const uint32_t alpha = texels[i + 3];
-        texels[i + 0] = uint8_t(MulDiv255(texels[i + 0], alpha));
-        texels[i + 1] = uint8_t(MulDiv255(texels[i + 1], alpha));
-        texels[i + 2] = uint8_t(MulDiv255(texels[i + 2], alpha));
+        texels[i + 0] = uint8_t(GlyphDraw::MulDiv255(texels[i + 0], alpha));
+        texels[i + 1] = uint8_t(GlyphDraw::MulDiv255(texels[i + 1], alpha));
+        texels[i + 2] = uint8_t(GlyphDraw::MulDiv255(texels[i + 2], alpha));
     }
 }
 
@@ -265,10 +205,9 @@ FontBase::DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_
         return;
     }
 
-    const uint32_t premultiplied   = PremultiplyColor(color);
-    const uint32_t colorBlueRed    = premultiplied & kPairMask;
-    const uint32_t colorGreenAlpha = (premultiplied >> 8) & kPairMask;
-    const uint32_t colorAlpha      = color >> 24;
+    const uint32_t                     premultiplied = GlyphDraw::PremultiplyColor(color);
+    const uint32_t                     colorAlpha    = color >> 24;
+    const GlyphDraw::DrawGlyphFunction drawGlyph     = GlyphDraw::GetDrawGlyphFunction(GetBytesPerTexel(mTextureFormat), colorAlpha == 255);
 
     LayoutText(utf8, textHeight, [&](const CodePointHeightData &data, float penX, int32_t baseline) {
         // Clip Top
@@ -315,25 +254,7 @@ FontBase::DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_
         const size_t stepY         = data.rotated ? 1 : textureWidth;
         const size_t offsetTexture = size_t(data.rect.y) * textureWidth + size_t(data.rect.x) + size_t(minY) * stepY + size_t(minX) * stepX;
         uint32_t     *dstGlyph     = &dst[size_t(currentY) * dstStride + size_t(currentX)];
-        if(mTextureFormat == ETextureFormat::Alpha8) {
-            // A coverage m draws as the premultiplied white texel (m, m, m, m), so a white color texture draws the same.
-            DrawTexels<1>(mTexture.data(), offsetTexture, stepX, stepY, maxX - minX, maxY - minY, dstGlyph, dstStride,
-                          [colorBlueRed, colorGreenAlpha, colorAlpha](const uint8_t *texel, uint32_t &pixel) {
-                if(texel[0] != 0) {
-                    pixel = Blend(pixel, colorBlueRed * texel[0], colorGreenAlpha * texel[0], MulDiv255(texel[0], colorAlpha));
-                }
-            });
-        }
-        else {
-            DrawTexels<4>(mTexture.data(), offsetTexture, stepX, stepY, maxX - minX, maxY - minY, dstGlyph, dstStride,
-                          [premultiplied, colorAlpha](const uint8_t *texel, uint32_t &pixel) {
-                if(texel[3] != 0) {
-                    const uint32_t bgra = uint32_t(texel[0]) | (uint32_t(texel[1]) << 8) | (uint32_t(texel[2]) << 16) | (uint32_t(texel[3]) << 24);
-                    pixel = Blend(pixel, MulPairByPair(bgra, premultiplied), MulPairByPair(bgra >> 8, premultiplied >> 8),
-                                  MulDiv255(texel[3], colorAlpha));
-                }
-            });
-        }
+        drawGlyph(mTexture.data(), offsetTexture, stepX, stepY, maxX - minX, maxY - minY, dstGlyph, dstStride, premultiplied, colorAlpha);
     });
 }
 
