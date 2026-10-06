@@ -50,10 +50,10 @@ namespace {
     inline void
     DrawTexels(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                uint32_t *dst, uint32_t dstStride, const TBlend &blend) {
-        for(int32_t y = 0; y < height; ++y, offset += stepY) {
+        for (int32_t y = 0; y < height; ++y, offset += stepY) {
             uint32_t *row   = &dst[size_t(y) * dstStride];
             size_t   texel  = offset;
-            for(int32_t x = 0; x < width; ++x, texel += stepX) {
+            for (int32_t x = 0; x < width; ++x, texel += stepX) {
                 blend(&texture[texel * kBytesPerTexel], row[x]);
             }
         }
@@ -73,10 +73,10 @@ namespace {
         const uint32_t colorGreenAlpha = (color >> 8) & kPairMask;
         DrawTexels<1>(texture, offset, stepX, stepY, width, height, dst, dstStride,
                       [color, colorBlueRed, colorGreenAlpha](const uint8_t *texel, uint32_t &pixel) {
-            if(texel[0] == 255) {
+            if (texel[0] == 255) {
                 pixel = color;
             }
-            else if(texel[0] != 0) {
+            else if (texel[0] != 0) {
                 pixel = Blend(pixel, colorBlueRed * texel[0], colorGreenAlpha * texel[0], texel[0]);
             }
         });
@@ -90,7 +90,7 @@ namespace {
         const uint32_t colorGreenAlpha = (color >> 8) & kPairMask;
         DrawTexels<1>(texture, offset, stepX, stepY, width, height, dst, dstStride,
                       [colorBlueRed, colorGreenAlpha, alpha](const uint8_t *texel, uint32_t &pixel) {
-            if(texel[0] != 0) {
+            if (texel[0] != 0) {
                 pixel = Blend(pixel, colorBlueRed * texel[0], colorGreenAlpha * texel[0], GlyphDraw::MulDiv255(texel[0], alpha));
             }
         });
@@ -107,11 +107,11 @@ namespace {
             // the aliasing rule, and it gives the channels in another order on a big-endian processor. It works with
             // GCC and MSVC on x86. The portable load is:
             //   uint32_t(texel[0]) | (uint32_t(texel[1]) << 8) | (uint32_t(texel[2]) << 16) | (uint32_t(texel[3]) << 24)
-            if(texel[3] == 255) {
+            if (texel[3] == 255) {
                 const uint32_t bgra = *reinterpret_cast<const uint32_t *>(texel);
                 pixel = Div255Pair(MulPairByPair(bgra, color)) | (Div255Pair(MulPairByPair(bgra >> 8, color >> 8)) << 8);
             }
-            else if(texel[3] != 0) {
+            else if (texel[3] != 0) {
                 const uint32_t bgra = *reinterpret_cast<const uint32_t *>(texel);
                 pixel = Blend(pixel, MulPairByPair(bgra, color), MulPairByPair(bgra >> 8, color >> 8), texel[3]);
             }
@@ -124,7 +124,7 @@ namespace {
              uint32_t *dst, uint32_t dstStride, uint32_t color, uint32_t alpha) {
         DrawTexels<4>(texture, offset, stepX, stepY, width, height, dst, dstStride,
                       [color, alpha](const uint8_t *texel, uint32_t &pixel) {
-            if(texel[3] != 0) {
+            if (texel[3] != 0) {
                 const uint32_t bgra = *reinterpret_cast<const uint32_t *>(texel);
                 pixel = Blend(pixel, MulPairByPair(bgra, color), MulPairByPair(bgra >> 8, color >> 8), GlyphDraw::MulDiv255(texel[3], alpha));
             }
@@ -148,7 +148,7 @@ GlyphDraw::AllowX64v2(bool allow) {
 //-------------------------------------
 GlyphDraw::DrawGlyphFunction
 GlyphDraw::GetScalarDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
-    if(bytesPerTexel == 1) {
+    if (bytesPerTexel == 1) {
         return opaque ? DrawAlpha8Opaque : DrawAlpha8;
     }
 
@@ -161,7 +161,7 @@ GlyphDraw::GetDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
 #if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2)
     return GetX64v2DrawGlyphFunction(bytesPerTexel, opaque);
 #elif defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
-    if(gAllowX64v2 && CpuX86::HasX64v2()) {
+    if (gAllowX64v2 && CpuX86::HasX64v2()) {
         return GetX64v2DrawGlyphFunction(bytesPerTexel, opaque);
     }
 

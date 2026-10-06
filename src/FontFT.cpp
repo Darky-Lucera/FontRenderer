@@ -72,8 +72,8 @@ namespace {
 } // end of namespace
 
 //-------------------------------------
-FontFT::FontFT(const char *fontName) : Font(fontName) {
-    if (LoadFile(fontName) == false) {
+FontFT::FontFT(const char *fileName) : Font(fileName) {
+    if (LoadFile(fileName) == false) {
         return;
     }
 
@@ -130,23 +130,23 @@ FontFT::SetHinting(EHinting hinting) {
 
 //-------------------------------------
 void
-FontFT::SetMonochrome(bool set) {
-    if (set == mMonochrome) {
+FontFT::SetMonochrome(bool enabled) {
+    if (enabled == mMonochromeEnabled) {
         return;
     }
 
-    mMonochrome = set;
+    mMonochromeEnabled = enabled;
     Reset();
 }
 
 //-------------------------------------
 void
-FontFT::SetStemDarkening(bool set) {
-    if (set == mStemDarkening || mFace == nullptr) {
+FontFT::SetStemDarkening(bool enabled) {
+    if (enabled == mStemDarkeningEnabled || mFace == nullptr) {
         return;
     }
 
-    FT_Bool      value = set;
+    FT_Bool      value = enabled;
     FT_Parameter parameter;
     parameter.tag  = FT_PARAM_TAG_STEM_DARKENING;
     parameter.data = &value;
@@ -154,32 +154,32 @@ FontFT::SetStemDarkening(bool set) {
         return;
     }
 
-    mStemDarkening = set;
+    mStemDarkeningEnabled = enabled;
     Reset();
 }
 
 //-------------------------------------
 const CodePointData &
-FontFT::GetCodePointData(uint32_t index) {
+FontFT::GetCodePointData(uint32_t codePoint) {
     if (mStatus != EStatus::Ok) {
         return mCodePointData[0];
     }
 
-    auto cpd = mCodePointData.find(index);
+    auto cpd = mCodePointData.find(codePoint);
     if (cpd == mCodePointData.end()) {
         FT_Face       face  = mFace.get();
-        const FT_UInt glyph = FT_Get_Char_Index(face, index);
+        const FT_UInt glyph = FT_Get_Char_Index(face, codePoint);
         if (glyph == 0 || FT_Load_Glyph(face, glyph, FT_LOAD_NO_SCALE) != 0) {
             cpd = mCodePointData.find(0);   // Trash
             cpd->second = {};
         }
         else {
-            CodePointData codePoint;
-            codePoint.glyph           = int(glyph);
-            codePoint.advanceWidth    = int(face->glyph->metrics.horiAdvance);
-            codePoint.leftSideBearing = int(face->glyph->metrics.horiBearingX);
+            CodePointData codePointData;
+            codePointData.glyph           = int(glyph);
+            codePointData.advanceWidth    = int(face->glyph->metrics.horiAdvance);
+            codePointData.leftSideBearing = int(face->glyph->metrics.horiBearingX);
 
-            cpd = mCodePointData.insert({index, codePoint}).first;
+            cpd = mCodePointData.insert({codePoint, codePointData}).first;
         }
     }
 
@@ -188,7 +188,7 @@ FontFT::GetCodePointData(uint32_t index) {
 
 //-------------------------------------
 bool
-FontFT::RasterizeGlyph(const CodePointData &codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) {
+FontFT::RasterizeGlyph(const CodePointData &codePointData, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) {
     // The scale goes to FreeType as it is, in 16.16 fixed point, and it gives pixels in 26.6 fixed point.
     const float        scale   = GetScaleForHeight(height);
     FT_Size_RequestRec request {};
@@ -197,8 +197,8 @@ FontFT::RasterizeGlyph(const CodePointData &codePoint, uint8_t height, CodePoint
     request.height = request.width;
 
     FT_Face face = mFace.get();
-    const FT_Render_Mode renderMode = mMonochrome ? FT_RENDER_MODE_MONO : FT_RENDER_MODE_NORMAL;
-    if (FT_Request_Size(face, &request) != 0 || FT_Load_Glyph(face, FT_UInt(codePoint.glyph), GetLoadFlags(mHinting, mMonochrome)) != 0 ||
+    const FT_Render_Mode renderMode = mMonochromeEnabled ? FT_RENDER_MODE_MONO : FT_RENDER_MODE_NORMAL;
+    if (FT_Request_Size(face, &request) != 0 || FT_Load_Glyph(face, FT_UInt(codePointData.glyph), GetLoadFlags(mHinting, mMonochromeEnabled)) != 0 ||
         FT_Render_Glyph(face->glyph, renderMode) != 0) {
         return false;
     }
@@ -208,11 +208,11 @@ FontFT::RasterizeGlyph(const CodePointData &codePoint, uint8_t height, CodePoint
 
     data.x               = slot->bitmap_left;
     data.y               = -slot->bitmap_top;
-    data.leftSideBearing = int(floor(codePoint.leftSideBearing * scale));
+    data.leftSideBearing = int(floor(codePointData.leftSideBearing * scale));
     // Normal and Auto hinting fit each glyph to an advance of whole pixels, so the text must use that advance.
     // Light hinting leaves the fractional advance of the outline, as FreeType recommends.
     const bool roundsAdvances = (mHinting == EHinting::Normal || mHinting == EHinting::Auto);
-    data.advanceWidth    = roundsAdvances ? float(slot->advance.x) / 64.0f : float(codePoint.advanceWidth) * scale;
+    data.advanceWidth    = roundsAdvances ? float(slot->advance.x) / 64.0f : float(codePointData.advanceWidth) * scale;
 
     const int w = int(source.width);
     const int h = int(source.rows);

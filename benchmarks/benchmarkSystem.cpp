@@ -109,7 +109,7 @@ namespace Benchmark {
         //-----------------------------
         const char *
         GetArmCore(unsigned long part) {
-            switch(part) {
+            switch (part) {
                 case 0xd03:
                     return "Cortex-A53";
                 case 0xd04:

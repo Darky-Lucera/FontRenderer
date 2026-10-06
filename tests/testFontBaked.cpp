@@ -31,10 +31,10 @@ namespace {
     std::string
     GetAllText() {
         std::string text;
-        for(char c = ' '; c <= '~'; ++c) {
+        for (char c = ' '; c <= '~'; ++c) {
             text += c;
         }
-        for(const char *sample : kTexts) {
+        for (const char *sample : kTexts) {
             text += sample;
         }
         return text;
@@ -69,7 +69,7 @@ namespace {
     SaveAllText(TFont &font) {
         font.SetAntialias(true);
         font.SetAntialiasAllowEx(true);
-        for(uint8_t height : kHeights) {
+        for (uint8_t height : kHeights) {
             REQUIRE(font.Preload(GetAllText().c_str(), height));
         }
         font.LoadAllKerningPairs();
@@ -95,14 +95,14 @@ TEST_CASE_TEMPLATE("FontBaked draws exactly as the font it was saved from", TFon
 
     FontBaked baked(Test::kMetricsPath, Test::kTexturePath);
     REQUIRE(baked.GetStatus() == Font::EStatus::Ok);
-    CHECK(baked.GetFontName() == Test::kMetricsPath);
+    CHECK(baked.GetFileName() == Test::kMetricsPath);
     CHECK(baked.GetTextureFormat() == FontBase::ETextureFormat::Alpha8);
     CHECK(baked.GetTextureWidth()  == font.GetUsedTextureWidth());
     CHECK(baked.GetTextureHeight() == font.GetUsedTextureHeight());
 
     const uint32_t version = font.GetTextureVersion();
-    for(const char *text : kTexts) {
-        for(uint8_t height : kHeights) {
+    for (const char *text : kTexts) {
+        for (uint8_t height : kHeights) {
             CAPTURE(text);
             CAPTURE(int(height));
 
@@ -135,10 +135,10 @@ TEST_CASE("FontBaked only draws the glyphs it has") {
     FontBaked baked(Test::kMetricsPath, Test::kTexturePath);
     REQUIRE(baked.GetStatus() == Font::EStatus::Ok);
 
-    const std::vector<uint32_t> empty(400 * 160, 0);
-    CHECK(Draw(baked, "A", 20) != empty);
-    CHECK(Draw(baked, "B", 20) == empty);
-    CHECK(Draw(baked, "A", 21) == empty);
+    const std::vector<uint32_t> kEmpty(400 * 160, 0);
+    CHECK(Draw(baked, "A", 20) != kEmpty);
+    CHECK(Draw(baked, "B", 20) == kEmpty);
+    CHECK(Draw(baked, "A", 21) == kEmpty);
 
     Font::Rect single, missing;
     baked.GetTextBox("A", 20, &single);
@@ -211,7 +211,7 @@ TEST_CASE("FontBaked draws a BGRA32 texture multiplied by the color of the text"
     // FontBaked premultiplies the alpha, so it keeps each texel as (alpha, alpha, alpha, alpha) and not as
     // (255, 255, 255, alpha).
     std::vector<uint8_t> white, premultipliedWhite;
-    for(uint8_t texelAlpha : coverage) {
+    for (uint8_t texelAlpha : coverage) {
         white.insert(white.end(), { 255, 255, 255, texelAlpha });
         premultipliedWhite.insert(premultipliedWhite.end(), { texelAlpha, texelAlpha, texelAlpha, texelAlpha });
     }
@@ -226,8 +226,8 @@ TEST_CASE("FontBaked draws a BGRA32 texture multiplied by the color of the text"
     CHECK(getTexture(baked) == premultipliedWhite);
 
     // An opaque color that is not white, so that the loop for an opaque text also has to tint the texel.
-    for(uint32_t color : { kWhite, 0xff40c080u, 0x80ff8040u }) {
-        for(const char *text : kTexts) {
+    for (uint32_t color : { kWhite, 0xff40c080u, 0x80ff8040u }) {
+        for (const char *text : kTexts) {
             CAPTURE(color);
             CAPTURE(text);
             std::vector<uint32_t> expected(400 * 160, 0xff203040u);
@@ -260,7 +260,7 @@ TEST_CASE("FontBaked draws a BGRA32 texture multiplied by the color of the text"
     grayAlpha[15] = uint8_t(height >> 8);
     grayAlpha[16] = 16;
     grayAlpha[17] = 0x28;
-    for(uint8_t texelAlpha : coverage) {
+    for (uint8_t texelAlpha : coverage) {
         grayAlpha.insert(grayAlpha.end(), { 255, texelAlpha });
     }
     WriteFile(Test::kTexturePath, grayAlpha);
@@ -271,7 +271,7 @@ TEST_CASE("FontBaked draws a BGRA32 texture multiplied by the color of the text"
 
     // A single glyph, so no pixel is blended twice. Blue 128, green 0 and red 255, not premultiplied.
     std::vector<uint8_t> tinted;
-    for(uint8_t texelAlpha : coverage) {
+    for (uint8_t texelAlpha : coverage) {
         tinted.insert(tinted.end(), { 128, 0, 255, texelAlpha });
     }
     FontBaked                   tintedFont(Test::kMetricsPath, tinted.data(), width, height, FontBase::ETextureFormat::BGRA32);
@@ -281,10 +281,10 @@ TEST_CASE("FontBaked draws a BGRA32 texture multiplied by the color of the text"
     // texture leaves its premultiplied texel, not (255, 255, 0, 128): alpha m, red m, green 0 and blue 128 * m / 255,
     // rounded. 255 is odd, so that division never ends in .5 and adding 127 rounds it.
     int wrongPixels = 0;
-    for(size_t i = 0; i < buffer.size(); ++i) {
+    for (size_t i = 0; i < buffer.size(); ++i) {
         const uint32_t m     = expected[i] & 0xff;
         const uint32_t pixel = (m << 24) | (m << 16) | ((128 * m + 127) / 255);
-        if(buffer[i] != pixel) {
+        if (buffer[i] != pixel) {
             ++wrongPixels;
         }
     }
@@ -321,22 +321,22 @@ TEST_CASE("FontBaked reports files it cannot use") {
         uint8_t     value;
     };
     // A header of 28 bytes, one height of 17 bytes, and then the glyphs, 'H' first. Numbers are little-endian.
-    const size_t firstGlyph = 28 + 17;
-    const Change changes[] = {
+    const size_t kFirstGlyph = 28 + 17;
+    const Change kChanges[] = {
         { "magic",                  0,                  'X'  },
         { "version",                4,                  2    },
         { "texture width",          11,                 0x7f },
         { "texture height",         15,                 0x7f },
         { "height count",           16,                 2    },
         { "height 0",               28,                 0    },
-        { "code point 0",           firstGlyph,         0    },
-        { "code point too big",     firstGlyph + 3,     0x7f },
-        { "height without metrics", firstGlyph + 4,     21   },
-        { "negative glyph",         firstGlyph + 8,     0x80 },
-        { "rect outside",           firstGlyph + 28,    0x7f },
-        { "rotated 2",              firstGlyph + 41,    2    },
+        { "code point 0",           kFirstGlyph,        0    },
+        { "code point too big",     kFirstGlyph + 3,    0x7f },
+        { "height without metrics", kFirstGlyph + 4,    21   },
+        { "negative glyph",         kFirstGlyph + 8,    0x80 },
+        { "rect outside",           kFirstGlyph + 28,   0x7f },
+        { "rotated 2",              kFirstGlyph + 41,   2    },
     };
-    for(const Change &change : changes) {
+    for (const Change &change : kChanges) {
         CAPTURE(change.what);
         std::vector<uint8_t> file = metrics;
         REQUIRE(file[change.offset] != change.value);
@@ -356,9 +356,9 @@ TEST_CASE("Font reports files it cannot write") {
     Test::DefaultFont font(Test::kFontPath);
     REQUIRE(font.Preload("A", 20));
 
-    const char *missing = FONT_RENDERER_TEST_OUTPUT "missing/baked.frb";
-    CHECK(font.SaveBaked(missing, Test::kTexturePath) == Font::EStatus::CannotWriteFile);
-    CHECK(font.SaveBaked(Test::kMetricsPath, missing) == Font::EStatus::CannotWriteFile);
+    const char *kMissing = FONT_RENDERER_TEST_OUTPUT "missing/baked.frb";
+    CHECK(font.SaveBaked(kMissing, Test::kTexturePath) == Font::EStatus::CannotWriteFile);
+    CHECK(font.SaveBaked(Test::kMetricsPath, kMissing) == Font::EStatus::CannotWriteFile);
     CHECK(font.SaveBaked(nullptr, Test::kTexturePath) == Font::EStatus::CannotWriteFile);
     CHECK(font.SaveBaked(Test::kMetricsPath, nullptr) == Font::EStatus::CannotWriteFile);
 }

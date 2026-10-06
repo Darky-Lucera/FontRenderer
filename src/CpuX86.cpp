@@ -29,7 +29,7 @@ namespace {
     #if defined(_MSC_VER)
         int registers[4];   // eax, ebx, ecx, edx
         __cpuid(registers, int(leaf & 0x80000000u));
-        if(uint32_t(registers[0]) < leaf) {
+        if (uint32_t(registers[0]) < leaf) {
             return 0;
         }
         __cpuid(registers, int(leaf));

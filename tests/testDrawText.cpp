@@ -60,7 +60,7 @@ namespace {
         bitmap.x      = x1;
         bitmap.y      = y1;
         bitmap.pixels.resize(size_t(bitmap.width) * size_t(bitmap.height));
-        if(bitmap.pixels.empty() == false) {
+        if (bitmap.pixels.empty() == false) {
             stbtt_MakeGlyphBitmap(&info, bitmap.pixels.data(), bitmap.width, bitmap.height, bitmap.width, scale, scale, glyph);
         }
 
@@ -92,7 +92,7 @@ namespace {
         bitmap.x      = metrics.xOffset;
         bitmap.y      = metrics.yOffset;
         bitmap.pixels.resize(size_t(bitmap.width) * size_t(bitmap.height));
-        if(bitmap.pixels.empty() == false) {
+        if (bitmap.pixels.empty() == false) {
             SFT_Image image {};
             image.pixels = bitmap.pixels.data();
             image.width  = bitmap.width;
@@ -136,7 +136,7 @@ namespace {
         bitmap.x      = face->glyph->bitmap_left;
         bitmap.y      = -face->glyph->bitmap_top;
         bitmap.pixels.resize(size_t(bitmap.width) * size_t(bitmap.height));
-        for(int y = 0; y < bitmap.height; ++y) {
+        for (int y = 0; y < bitmap.height; ++y) {
             memcpy(&bitmap.pixels[size_t(y) * size_t(bitmap.width)], source.buffer + size_t(y) * size_t(source.pitch), size_t(bitmap.width));
         }
 
@@ -155,7 +155,7 @@ TEST_CASE_TEMPLATE("Font draws every glyph exactly as its rasterizer renders it"
     };
 
     // Each layout packs, and so rotates, a different set of glyphs.
-    const Atlas atlases[] = {
+    const Atlas kAtlases[] = {
         { 0, Font::ELevelChoiceHeuristic::LevelMinWasteFit, Font::ETextureGrowth::Height },
         { 1, Font::ELevelChoiceHeuristic::LevelBottomLeft,  Font::ETextureGrowth::Width  },
         { 3, Font::ELevelChoiceHeuristic::LevelMinWasteFit, Font::ETextureGrowth::Both   },
@@ -163,15 +163,15 @@ TEST_CASE_TEMPLATE("Font draws every glyph exactly as its rasterizer renders it"
 
     const int kWidth = 128, kHeight = 128, kPosX = 40, kPosY = 20;
     int       rotated = 0;
-    for(const Atlas &atlas : atlases) {
+    for (const Atlas &atlas : kAtlases) {
         TFont font;
         REQUIRE(font.SetGlyphSpacing(atlas.spacing));
         font.SetPackingHeuristic(atlas.heuristic);
         font.SetTextureGrowth(atlas.growth);
 
-        for(int height : { 9, 23, 47, 64 }) {
+        for (int height : { 9, 23, 47, 64 }) {
             const HeightData &heightData = font.GetDataForHeight(uint8_t(height));
-            for(uint32_t codePoint = 33; codePoint < 127; ++codePoint) {
+            for (uint32_t codePoint = 33; codePoint < 127; ++codePoint) {
                 CAPTURE(atlas.spacing);
                 CAPTURE(height);
                 CAPTURE(codePoint);
@@ -185,13 +185,13 @@ TEST_CASE_TEMPLATE("Font draws every glyph exactly as its rasterizer renders it"
                 const int    originX = kPosX + glyph.x;
                 const int    originY = kPosY + heightData.ascent + glyph.y;
                 int          wrongPixels = 0;
-                for(int y = 0; y < kHeight; ++y) {
-                    for(int x = 0; x < kWidth; ++x) {
+                for (int y = 0; y < kHeight; ++y) {
+                    for (int x = 0; x < kWidth; ++x) {
                         const int     glyphX   = x - originX;
                         const int     glyphY   = y - originY;
                         const bool    inGlyph  = glyphX >= 0 && glyphY >= 0 && glyphX < glyph.width && glyphY < glyph.height;
                         const uint8_t expected = inGlyph ? glyph.pixels[size_t(glyphY) * size_t(glyph.width) + size_t(glyphX)] : 0;
-                        if((buffer[size_t(y) * kWidth + size_t(x)] & 0xff) != expected) {
+                        if ((buffer[size_t(y) * kWidth + size_t(x)] & 0xff) != expected) {
                             ++wrongPixels;
                         }
                     }
@@ -219,18 +219,18 @@ TEST_CASE_TEMPLATE("Font clipping draws exactly the part of the text inside the 
     REQUIRE(std::count(reference.begin(), reference.end(), 0u) < std::ptrdiff_t(reference.size()));
 
     std::mt19937 rng(5);
-    for(int i = 0; i < 200; ++i) {
+    for (int i = 0; i < 200; ++i) {
         // DrawText does not know the buffer size, so the clip rectangle has to keep it inside.
         int32_t left   = int32_t(rng() % (kWidth  + 1));
         int32_t right  = int32_t(rng() % (kWidth  + 1));
         int32_t top    = int32_t(rng() % (kHeight + 1));
         int32_t bottom = int32_t(rng() % (kHeight + 1));
         // Some rectangles are left inverted, which must draw nothing.
-        if(i % 4 != 0) {
-            if(left > right) {
+        if (i % 4 != 0) {
+            if (left > right) {
                 std::swap(left, right);
             }
-            if(top > bottom) {
+            if (top > bottom) {
                 std::swap(top, bottom);
             }
         }
@@ -244,12 +244,12 @@ TEST_CASE_TEMPLATE("Font clipping draws exactly the part of the text inside the 
         font.DrawText(kText, kTextHeight, kWhite, buffer.data(), kWidth, kPosX, kPosY);
 
         int wrongPixels = 0;
-        for(int y = 0; y < kHeight; ++y) {
-            for(int x = 0; x < kWidth; ++x) {
+        for (int y = 0; y < kHeight; ++y) {
+            for (int x = 0; x < kWidth; ++x) {
                 const bool     inside   = x >= left && x < right && y >= top && y < bottom;
                 const size_t   offset   = size_t(y) * kWidth + size_t(x);
                 const uint32_t expected = inside ? reference[offset] : 0u;
-                if(buffer[offset] != expected) {
+                if (buffer[offset] != expected) {
                     ++wrongPixels;
                 }
             }
@@ -275,10 +275,10 @@ TEST_CASE("DrawText blends the alpha of the destination") {
     // Over transparent black, each pixel is the premultiplied color scaled by the coverage, so its red is its alpha,
     // not 255. Over an opaque buffer, the alpha stays 255.
     int drawn = 0, wrongPixels = 0;
-    for(size_t i = 0; i < transparent.size(); ++i) {
+    for (size_t i = 0; i < transparent.size(); ++i) {
         const uint32_t alpha = transparent[i] >> 24;
         drawn += (alpha != 0) ? 1 : 0;
-        if(transparent[i] != ((alpha << 24) | (alpha << 16)) || (opaque[i] >> 24) != 255) {
+        if (transparent[i] != ((alpha << 24) | (alpha << 16)) || (opaque[i] >> 24) != 255) {
             ++wrongPixels;
         }
     }
@@ -296,12 +296,12 @@ TEST_CASE("DrawText blends the alpha of the destination") {
         return (source + dst * (255 - sourceAlpha) + 127) / 255;
     };
     wrongPixels = 0;
-    for(size_t i = 0; i < translucent.size(); ++i) {
+    for (size_t i = 0; i < translucent.size(); ++i) {
         const uint32_t source      = 128 * (coverage[i] >> 24);
         const uint32_t sourceAlpha = (source + 127) / 255;
         const uint32_t expected    = (over(source, 0x80, sourceAlpha) << 24) | (over(source, 0x40, sourceAlpha) << 16) |
                                      (over(0, 0x20, sourceAlpha) << 8) | over(0, 0x10, sourceAlpha);
-        if(translucent[i] != expected) {
+        if (translucent[i] != expected) {
             ++wrongPixels;
         }
     }
@@ -322,7 +322,7 @@ TEST_CASE("DrawText draws an opaque text with the same blend as a translucent on
 
     // A destination that changes from pixel to pixel, opaque in one half and translucent, so premultiplied, in the other.
     std::vector<uint32_t> expected(kWidth * kHeight);
-    for(size_t i = 0; i < expected.size(); ++i) {
+    for (size_t i = 0; i < expected.size(); ++i) {
         const uint32_t x     = uint32_t(i % kWidth);
         const uint32_t y     = uint32_t(i / kWidth);
         const uint32_t alpha = (x < kWidth / 2) ? 255u : 160u;
@@ -333,13 +333,13 @@ TEST_CASE("DrawText draws an opaque text with the same blend as a translucent on
 
     // Each channel is color * coverage + dst * (255 - coverage), divided by 255 and rounded once.
     int full = 0, partial = 0;
-    for(size_t i = 0; i < expected.size(); ++i) {
+    for (size_t i = 0; i < expected.size(); ++i) {
         const uint32_t m = coverage[i] >> 24;
         full    += (m == 255) ? 1 : 0;
         partial += (m > 0 && m < 255) ? 1 : 0;
 
         uint32_t pixel = 0;
-        for(uint32_t shift = 0; shift < 32; shift += 8) {
+        for (uint32_t shift = 0; shift < 32; shift += 8) {
             const uint32_t source = ((kColor >> shift) & 0xff) * m;
             const uint32_t dst    = (expected[i] >> shift) & 0xff;
             pixel |= ((source + dst * (255 - m) + 127) / 255) << shift;

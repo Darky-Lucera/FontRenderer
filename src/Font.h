@@ -61,7 +61,7 @@ namespace MindShake {
             static constexpr int32_t    kMaxAntialiasWeight = 0xffff;
 
         public:
-            explicit                    Font(const char *fontName);
+            explicit                    Font(const char *fileName);
 
             void                        Reset();                            // Remove all rendered glyphs and associated data!
 
@@ -97,19 +97,19 @@ namespace MindShake {
 
             // A rotated glyph is stored transposed. An effect added to the saved texture that is not symmetric
             // about the diagonal, like a vertical gradient, would look wrong on it. Only affects glyphs packed afterwards.
-            void                        SetAllowRotation(bool allow)        { mPacker.SetAllowRotation(allow);          }
+            void                        SetAllowRotation(bool enabled)      { mPacker.SetAllowRotation(enabled);        }
             bool                        GetAllowRotation() const            { return mPacker.GetAllowRotation();        }
 
             // Changing any antialias setting discards every rendered glyph, like Reset.
-            void                        SetAntialias(bool set);
-            bool                        GetAntialias() const                { return mUseAntialias;                     }
-            void                        SetAntialiasAllowEx(bool set);
+            void                        SetAntialias(bool enabled);
+            bool                        GetAntialias() const                { return mAntialiasEnabled;                 }
+            void                        SetAntialiasAllowEx(bool enabled);
             bool                        GetAntialiasAllowEx() const         { return mAntialiasAllowEx;                 }
             // Returns false, keeping the current weights, if any is outside [0, kMaxAntialiasWeight] or all are 0.
             bool                        SetAntialiasWeights(int32_t center, int32_t border, int32_t corner);
-            int32_t                     GetAntialiasCenter() const          { return mAACenter;                         }
-            int32_t                     GetAntialiasBorder() const          { return mAABorder;                         }
-            int32_t                     GetAntialiasCorner() const          { return mAACorner;                         }
+            int32_t                     GetAntialiasCenter() const          { return mAntialiasCenter;                  }
+            int32_t                     GetAntialiasBorder() const          { return mAntialiasBorder;                  }
+            int32_t                     GetAntialiasCorner() const          { return mAntialiasCorner;                  }
 
             // Renders every code point of the text at that height before it is drawn. Packing them all together
             // fills the texture better than packing them one by one. Returns false if any glyph did not fit in the texture.
@@ -142,8 +142,8 @@ namespace MindShake {
             // Returns how many pixels the glyph grew on each side.
             int                         ApplyAntialias(std::unique_ptr<uint8_t[]> &pixels, int &width, int &height);
             void                        ApplyPadding(GlyphBitmap &bitmap, CodePointHeightData &data);
-            void                        AABlock(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
-            void                        AABlockEx(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
+            void                        AntialiasBlock(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
+            void                        AntialiasBlockEx(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
 
             const HeightData &          GetDataForHeight(uint8_t height) override;
             const CodePointHeightData & GetCodePointDataForHeight(uint32_t codePoint, uint8_t height) override;
@@ -154,10 +154,10 @@ namespace MindShake {
             // Only used when GposKerning has nothing to read.
             virtual int                         GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) = 0;
 
-            virtual const CodePointData &       GetCodePointData(uint32_t index) = 0;
+            virtual const CodePointData &       GetCodePointData(uint32_t codePoint) = 0;
             // Fills the position and the advance of data, and the coverage of the glyph in bitmap,
             // which stays empty for a glyph without pixels. Returns false if it cannot render the glyph.
-            virtual bool                        RasterizeGlyph(const CodePointData &codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) = 0;
+            virtual bool                        RasterizeGlyph(const CodePointData &codePointData, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) = 0;
 
         protected:
             MappedFile             mFontFile;       // The backends point into it. As a base class member, it is destroyed after their members
@@ -177,10 +177,10 @@ namespace MindShake {
             uint32_t               mGlyphPaddingRight  {};
             uint32_t               mGlyphPaddingBottom {};
             ELevelChoiceHeuristic  mPackingHeuristic { ELevelChoiceHeuristic::LevelBottomLeft };
-            int32_t                mAACenter { 20 };
-            int32_t                mAABorder {  4 };
-            int32_t                mAACorner {  1 };
-            bool                   mUseAntialias { false };
+            int32_t                mAntialiasCenter { 20 };
+            int32_t                mAntialiasBorder {  4 };
+            int32_t                mAntialiasCorner {  1 };
+            bool                   mAntialiasEnabled { false };
             bool                   mAntialiasAllowEx { false };
     };
 

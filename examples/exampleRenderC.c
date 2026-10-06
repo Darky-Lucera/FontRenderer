@@ -66,7 +66,7 @@ render_text(fr_font *font, const char *text, uint8_t height, uint32_t color, int
     fr_rect box = { 0, 0, 0, 0 };
     double start;
     fr_font_get_text_box(font, text, height, &box);
-    if(g_show_bounding_box) {
+    if (g_show_bounding_box) {
         example_draw_box(x + box.x, y + box.y, box.width, box.height);
     }
 
@@ -90,7 +90,7 @@ measure_raster(backend_info *backend, struct mfb_timer *timer) {
 
     fr_font_reset(backend->font);
     start = mfb_timer_now(timer);
-    for(i = 0; i < sizeof(k_sizes) / sizeof(k_sizes[0]); ++i) {
+    for (i = 0; i < sizeof(k_sizes) / sizeof(k_sizes[0]); ++i) {
         fr_font_get_text_box(backend->font, k_greeting, k_sizes[i], &box);
     }
     fr_font_get_text_box(backend->font, k_more_greetings, 20, &box);
@@ -102,7 +102,7 @@ measure_raster(backend_info *backend, struct mfb_timer *timer) {
 static void
 measure_raster_again(void) {
     size_t i;
-    for(i = 0; i < g_backend_count; ++i) {
+    for (i = 0; i < g_backend_count; ++i) {
         g_backends[i].raster_measured = false;
     }
 }
@@ -116,7 +116,7 @@ render_column(backend_info *backend, int32_t left, int32_t width, struct mfb_tim
     char     title[64];
     size_t   i;
 
-    if(backend->raster_measured == false) {
+    if (backend->raster_measured == false) {
         measure_raster(backend, timer);
     }
 
@@ -128,7 +128,7 @@ render_column(backend_info *backend, int32_t left, int32_t width, struct mfb_tim
     fr_font_draw_text(font, title, 18, backend->color, g_screen.buffer, g_screen.width, left, y);
     y += 30;
 
-    for(i = 0; i < sizeof(k_sizes) / sizeof(k_sizes[0]); ++i) {
+    for (i = 0; i < sizeof(k_sizes) / sizeof(k_sizes[0]); ++i) {
         render_text(font, k_greeting, k_sizes[i], k_text_color, left, y, timer);
         y += k_sizes[i] + 6;
     }
@@ -181,7 +181,7 @@ static void
 render_shown_atlas(int32_t top) {
     backend_info *shown;
 
-    if(g_show_texture_id == g_backend_count) {
+    if (g_show_texture_id == g_backend_count) {
         char name[64];
         shown = &g_backends[g_baked.source];
         snprintf(name, sizeof(name), "baked %s", shown->name);
@@ -209,13 +209,13 @@ bake_font(size_t source) {
     fr_font_load_all_kerning_pairs(font);
 
     status = fr_font_save_baked(font, k_baked_metrics_path, k_baked_texture_path);
-    if(status != FR_STATUS_OK) {
+    if (status != FR_STATUS_OK) {
         fprintf(stderr, "Cannot save the baked font (status %d).\n", (int) status);
         return;
     }
 
     status = fr_font_create_baked(k_baked_metrics_path, k_baked_texture_path, &baked);
-    if(status != FR_STATUS_OK) {
+    if (status != FR_STATUS_OK) {
         fprintf(stderr, "Cannot load the baked font (status %d).\n", (int) status);
         return;
     }
@@ -302,11 +302,11 @@ keyboard(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool is_presse
     (void) mod;
 
     example_handle_key(window, key, is_pressed);
-    if(!is_pressed) {
+    if (!is_pressed) {
         return;
     }
 
-    switch(key) {
+    switch (key) {
         case MFB_KB_KEY_B:
             g_show_bounding_box = !g_show_bounding_box;
             break;
@@ -317,7 +317,7 @@ keyboard(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool is_presse
         case MFB_KB_KEY_2:
         case MFB_KB_KEY_3:
         case MFB_KB_KEY_4:
-            if((size_t) (key - MFB_KB_KEY_1) < get_atlas_count()) {
+            if ((size_t) (key - MFB_KB_KEY_1) < get_atlas_count()) {
                 g_show_texture_id = (size_t) (key - MFB_KB_KEY_1);
             }
             break;
@@ -328,21 +328,21 @@ keyboard(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool is_presse
             break;
 #endif
         case MFB_KB_KEY_A:
-            for(i = 0; i < g_backend_count; ++i) {
+            for (i = 0; i < g_backend_count; ++i) {
                 fr_font_set_antialias(g_backends[i].font, !fr_font_get_antialias(g_backends[i].font));
             }
             measure_raster_again();
             break;
         case MFB_KB_KEY_E:
-            for(i = 0; i < g_backend_count; ++i) {
+            for (i = 0; i < g_backend_count; ++i) {
                 fr_font_set_antialias_allow_ex(g_backends[i].font, !fr_font_get_antialias_allow_ex(g_backends[i].font));
             }
             measure_raster_again();
             break;
         case MFB_KB_KEY_W:
             g_mean_weights = !g_mean_weights;
-            for(i = 0; i < g_backend_count; ++i) {
-                if(g_mean_weights) {
+            for (i = 0; i < g_backend_count; ++i) {
+                if (g_mean_weights) {
                     fr_font_set_antialias_weights(g_backends[i].font, 1, 1, 1);
                 }
                 else {
@@ -375,7 +375,7 @@ static bool
 add_backend(fr_font_backend id, const char *name, uint32_t color) {
     backend_info    *backend = &g_backends[g_backend_count];
     const fr_status status   = fr_font_create(k_font_path, id, &backend->font);
-    if(status != FR_STATUS_OK) {
+    if (status != FR_STATUS_OK) {
         fprintf(stderr, "Cannot load %s with %s (status %d).\n", k_font_path, name, (int) status);
         return false;
     }
@@ -396,7 +396,7 @@ destroy_backends(void) {
     size_t i;
     fr_font_destroy(g_baked.font);
     g_baked.font = NULL;
-    for(i = 0; i < g_backend_count; ++i) {
+    for (i = 0; i < g_backend_count; ++i) {
         fr_font_destroy(g_backends[i].font);
     }
     g_backend_count = 0;
@@ -425,19 +425,19 @@ main(int argc, char *argv[]) {
 #endif
 #if defined(FONTRENDERER_USE_FREETYPE)
     loaded = loaded && add_backend(FR_FONT_BACKEND_FT, "FreeType", UINT32_C(0xffa5d6a7));
-    if(loaded) {
+    if (loaded) {
         // Light hinting makes small text sharper without changing its spacing.
         g_free_type = g_backends[g_backend_count - 1].font;
         fr_font_ft_set_hinting(g_free_type, FR_FONT_FT_HINTING_LIGHT);
     }
 #endif
-    if(loaded == false) {
+    if (loaded == false) {
         destroy_backends();
         return -1;
     }
 
     window = example_open_window("Font Renderer C API");
-    if(window == NULL) {
+    if (window == NULL) {
         destroy_backends();
         return -1;
     }
@@ -451,20 +451,20 @@ main(int argc, char *argv[]) {
         example_clear();
 
         // The keys and the resize callback only change the globals, so each column applies the clipping every frame.
-        for(i = 0; i < g_backend_count; ++i) {
+        for (i = 0; i < g_backend_count; ++i) {
             bottom = example_max(bottom, render_column(&g_backends[i], k_margin + (int32_t) i * column_width, column_width, timer));
         }
-        if(++timed_frames == timed_frame_count) {
+        if (++timed_frames == timed_frame_count) {
             draw_microseconds = g_draw_seconds / timed_frame_count * 1e6;
             g_draw_seconds    = 0.0;
             timed_frames      = 0;
         }
 
-        if(g_baked.font != NULL) {
+        if (g_baked.font != NULL) {
             bottom = render_baked_row(bottom + k_margin, timer);
         }
 
-        if(g_show_texture) {
+        if (g_show_texture) {
             render_shown_atlas(bottom + k_margin);
         }
         example_draw_clipping();
@@ -472,11 +472,11 @@ main(int argc, char *argv[]) {
         render_status_bar(g_backends[0].font, draw_microseconds, example_get_fps());
 
         state = mfb_update_ex(window, g_screen.buffer, g_screen.width, g_screen.height);
-        if(state != MFB_STATE_OK) {
+        if (state != MFB_STATE_OK) {
             window = NULL;
             break;
         }
-    } while(mfb_wait_sync(window));
+    } while (mfb_wait_sync(window));
 
     example_release();
     destroy_backends();

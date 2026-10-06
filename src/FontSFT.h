@@ -24,14 +24,14 @@ namespace MindShake {
     //---------------------------------
     class FontSFT : public Font {
         public:
-            explicit                    FontSFT(const char *fontName);
+            explicit                    FontSFT(const char *fileName);
 
         protected:
             void                        GetFontVMetrics();
             int                         GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
 
-            const CodePointData &       GetCodePointData(uint32_t index) override;
-            bool                        RasterizeGlyph(const CodePointData &codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) override;
+            const CodePointData &       GetCodePointData(uint32_t codePoint) override;
+            bool                        RasterizeGlyph(const CodePointData &codePointData, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) override;
 
         protected:
             std::unique_ptr<SFT_Font, void (*)(SFT_Font *)> mFont { nullptr, sft_freefont };   // Points into mFontFile

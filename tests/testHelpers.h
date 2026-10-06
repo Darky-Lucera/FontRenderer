@@ -29,7 +29,7 @@ namespace MindShake { namespace Test {
     template <class TFont>
     class Inspectable : public TFont {
         public:
-            explicit Inspectable(const char *fontName = kFontPath) : TFont(fontName) { }
+            explicit Inspectable(const char *fileName = kFontPath) : TFont(fileName) { }
 
             using TFont::GetCodePointDataForHeight;
             using TFont::GetCodePointGlyph;

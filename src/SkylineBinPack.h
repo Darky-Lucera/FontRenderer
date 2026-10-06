@@ -32,10 +32,10 @@ namespace MindShake {
 
             //-------------------------
             struct Rect {
-                int32_t left() const    { return x;          }
-                int32_t right() const   { return x + width;  }
-                int32_t top() const     { return y;          }
-                int32_t bottom() const  { return y + height; }
+                int32_t Left() const    { return x;          }
+                int32_t Right() const   { return x + width;  }
+                int32_t Top() const     { return y;          }
+                int32_t Bottom() const  { return y + height; }
 
                 int32_t x      {};
                 int32_t y      {};
@@ -59,8 +59,8 @@ namespace MindShake {
             bool        ResizeBin(uint32_t width, uint32_t height);
 
             // Only affects the rectangles inserted afterwards.
-            void        SetAllowRotation(bool allow)                                { mAllowRotation = allow;  }
-            bool        GetAllowRotation() const                                    { return mAllowRotation;   }
+            void        SetAllowRotation(bool enabled)                              { mAllowRotation = enabled; }
+            bool        GetAllowRotation() const                                    { return mAllowRotation;    }
 
             // Inserts a single rectangle into the bin, possibly rotated. Returns an empty rectangle on failure.
             Rect        Insert(uint32_t width, uint32_t height, ELevelChoiceHeuristic method);
@@ -70,11 +70,11 @@ namespace MindShake {
             // Returns the number of rectangles placed.
             size_t      Insert(const std::vector<Size> &sizes, std::vector<Rect> &rects, ELevelChoiceHeuristic method);
 
-            uint32_t    GetWidth() const                                            { return mBinWidth;        }
-            uint32_t    GetHeight() const                                           { return mBinHeight;       }
+            uint32_t    GetWidth() const                                            { return mBinWidth;         }
+            uint32_t    GetHeight() const                                           { return mBinHeight;        }
             uint32_t    GetUsedWidth() const;
             uint32_t    GetUsedHeight() const;
-            uint64_t    GetUsedSurfaceArea() const                                  { return mUsedSurfaceArea; }
+            uint64_t    GetUsedSurfaceArea() const                                  { return mUsedSurfaceArea;  }
 
         protected:
             // Scores depend on the heuristic; lower is better, compared lexicographically.
@@ -107,7 +107,7 @@ namespace MindShake {
             void        MergeSkylines();
 
         protected:
-            std::vector<SkylineNode>    mSkyLine;
+            std::vector<SkylineNode>    mSkyline;
 
             uint32_t        mBinWidth        {};
             uint32_t        mBinHeight       {};

@@ -17,7 +17,7 @@ namespace {
 
         std::vector<uint32_t> codePoints;
         const uint8_t         *text = buffer.data();
-        for(uint32_t codePoint = GetNextUTF32(&text); codePoint != 0; codePoint = GetNextUTF32(&text))
+        for (uint32_t codePoint = GetNextUTF32(&text); codePoint != 0; codePoint = GetNextUTF32(&text))
             codePoints.push_back(codePoint);
 
         return codePoints;
@@ -70,8 +70,8 @@ TEST_CASE("UTF-8 decoding stops at the end of the text") {
     CHECK(GetNextUTF32(nullptr) == 0);
     CHECK(GetNextUTF32(&null)   == 0);
 
-    const uint8_t  empty[] = { 0 };
-    const uint8_t *text    = empty;
+    const uint8_t  kEmpty[] = { 0 };
+    const uint8_t *text     = kEmpty;
     CHECK(GetNextUTF32(&text) == 0);
-    CHECK(text == empty);
+    CHECK(text == kEmpty);
 }

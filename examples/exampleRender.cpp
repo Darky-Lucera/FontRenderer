@@ -147,7 +147,7 @@ RenderColumn(Backend &backend, int32_t left, int32_t width, struct mfb_timer *ti
     }
     y += 10;
 
-    return RenderText(font, kMoreGreetings, 20, kTextColor, left, y, timer).bottom();
+    return RenderText(font, kMoreGreetings, 20, kTextColor, left, y, timer).Bottom();
 }
 
 //-------------------------------------
@@ -256,8 +256,8 @@ RenderBakedRow(int32_t top, struct mfb_timer *timer) {
     font.GetTextBox(label, kBakedSize, &labelBox);
     font.DrawText(label, kBakedSize, source.color, g_screen.buffer, g_screen.width, kMargin, top);
 
-    const Rect greeting = RenderText(font, kGreeting, kBakedSize, kTextColor, kMargin + labelBox.right() + 2 * kMargin, top, timer);
-    return std::max(top + labelBox.bottom(), greeting.bottom());
+    const Rect greeting = RenderText(font, kGreeting, kBakedSize, kTextColor, kMargin + labelBox.Right() + 2 * kMargin, top, timer);
+    return std::max(top + labelBox.Bottom(), greeting.Bottom());
 }
 #endif
 
@@ -291,7 +291,7 @@ RenderStatusBar(MindShake::Font &font, double drawMicroseconds, float fps) {
     Rect box {};
     snprintf(line, sizeof(line), u8"DrawText %.0f µs · %.0f FPS", drawMicroseconds, fps);
     font.GetTextBox(line, 13, &box);
-    font.DrawText(line, 13, kStatusColor, g_screen.buffer, g_screen.width, int32_t(g_screen.width) - kMargin - box.right(), top + 24);
+    font.DrawText(line, 13, kStatusColor, g_screen.buffer, g_screen.width, int32_t(g_screen.width) - kMargin - box.Right(), top + 24);
 
 #if defined(FONTRENDERER_USE_FREETYPE)
     snprintf(line, sizeof(line), u8"FreeType · H hinting: %s · M monochrome: %s · D stem darkening: %s",
@@ -308,7 +308,7 @@ Keyboard(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool isPressed
         return;
     }
 
-    switch(key) {
+    switch (key) {
         case MFB_KB_KEY_B:
             gShowBoundingBox = !gShowBoundingBox;
             break;
@@ -321,7 +321,7 @@ Keyboard(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool isPressed
         case MFB_KB_KEY_2:
         case MFB_KB_KEY_3:
         case MFB_KB_KEY_4:
-            if(size_t(key - MFB_KB_KEY_1) < GetAtlasCount()) {
+            if (size_t(key - MFB_KB_KEY_1) < GetAtlasCount()) {
                 gShowTextureId = size_t(key - MFB_KB_KEY_1);
             }
             break;
@@ -334,14 +334,14 @@ Keyboard(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool isPressed
 #endif
 
         case MFB_KB_KEY_A:
-            for(Backend &backend : gBackends) {
+            for (Backend &backend : gBackends) {
                 backend.font->SetAntialias(!backend.font->GetAntialias());
             }
             MeasureRasterAgain();
             break;
 
         case MFB_KB_KEY_E:
-            for(Backend &backend : gBackends) {
+            for (Backend &backend : gBackends) {
                 backend.font->SetAntialiasAllowEx(!backend.font->GetAntialiasAllowEx());
             }
             MeasureRasterAgain();
@@ -349,8 +349,8 @@ Keyboard(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool isPressed
 
         case MFB_KB_KEY_W:
             gMeanWeights = !gMeanWeights;
-            for(Backend &backend : gBackends) {
-                if(gMeanWeights) {
+            for (Backend &backend : gBackends) {
+                if (gMeanWeights) {
                     backend.font->SetAntialiasWeights(1, 1, 1);
                 }
                 else {
@@ -468,7 +468,7 @@ main(int argc, char *argv[]) {
             window = nullptr;
             break;
         }
-    } while(mfb_wait_sync(window));
+    } while (mfb_wait_sync(window));
 
     example_release();
 #if defined(FONTRENDERER_USE_BAKED)

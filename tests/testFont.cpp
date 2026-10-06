@@ -28,8 +28,8 @@ namespace {
     template <class TFont>
     void
     RenderAscii(TFont &font, std::initializer_list<int> heights) {
-        for(int height : heights) {
-            for(uint32_t codePoint = 33; codePoint < 127; ++codePoint)
+        for (int height : heights) {
+            for (uint32_t codePoint = 33; codePoint < 127; ++codePoint)
                 font.GetCodePointDataForHeight(codePoint, uint8_t(height));
         }
     }
@@ -45,20 +45,20 @@ namespace {
         const uint8_t  *texels = font.GetTexture();
         int            errors  = 0;
 
-        for(const auto &entry : font.mCodePointHeightData) {
-            if(entry.second.glyph <= 0 || entry.second.GetWidth() == 0) {
+        for (const auto &entry : font.mCodePointHeightData) {
+            if (entry.second.glyph <= 0 || entry.second.GetWidth() == 0) {
                 continue;
             }
 
             const Font::Rect &rect = entry.second.rect;
-            for(int y = rect.top() - spacing; y < rect.bottom() + spacing; ++y) {
-                for(int x = rect.left() - spacing; x < rect.right() + spacing; ++x) {
-                    if(x < 0 || y < 0 || x >= width || y >= height) {
+            for (int y = rect.Top() - spacing; y < rect.Bottom() + spacing; ++y) {
+                for (int x = rect.Left() - spacing; x < rect.Right() + spacing; ++x) {
+                    if (x < 0 || y < 0 || x >= width || y >= height) {
                         ++errors;
                         continue;
                     }
-                    const bool inGlyph = x >= rect.left() && x < rect.right() && y >= rect.top() && y < rect.bottom();
-                    if(!inGlyph && texels[y * width + x] != 0) {
+                    const bool inGlyph = x >= rect.Left() && x < rect.Right() && y >= rect.Top() && y < rect.Bottom();
+                    if (!inGlyph && texels[y * width + x] != 0) {
                         ++errors;
                     }
                 }
@@ -73,7 +73,7 @@ namespace {
     void
     FindInkCenter(const std::vector<uint32_t> &buffer, int width, double &x, double &y) {
         double sum = 0.0, sumX = 0.0, sumY = 0.0;
-        for(size_t i = 0; i < buffer.size(); ++i) {
+        for (size_t i = 0; i < buffer.size(); ++i) {
             const double coverage = double(buffer[i] & 0xff);
             sum  += coverage;
             sumX += coverage * double(i % size_t(width));
@@ -150,7 +150,7 @@ TEST_CASE_TEMPLATE("Font keeps the advance of a glyph that does not fit in the t
     const CodePointHeightData &data = fixedHeight.GetCodePointDataForHeight('W', 255);
     CHECK(data.glyph > 0);
     CHECK(data.GetWidth() == 0);
-    CHECK(box.right() == expected.right());
+    CHECK(box.Right() == expected.Right());
 }
 
 //-------------------------------------
@@ -164,22 +164,22 @@ TEST_CASE_TEMPLATE("Font text box only grows sideways for glyphs without pixels"
     font.GetTextBox("HHH  ", 32, &trailing);
     font.GetTextBox("   ", 32, &blank);
 
-    CHECK(spaced.top()      == solid.top());
-    CHECK(spaced.bottom()   == solid.bottom());
-    CHECK(spaced.right()    >  pair.right());
-    CHECK(leading.left()    == 0);
-    CHECK(leading.right()   >  solid.right());
-    CHECK(leading.bottom()  == solid.bottom());
-    CHECK(trailing.top()    == solid.top());
-    CHECK(trailing.bottom() == solid.bottom());
-    CHECK(trailing.right()  >  solid.right());
+    CHECK(spaced.Top()      == solid.Top());
+    CHECK(spaced.Bottom()   == solid.Bottom());
+    CHECK(spaced.Right()    >  pair.Right());
+    CHECK(leading.Left()    == 0);
+    CHECK(leading.Right()   >  solid.Right());
+    CHECK(leading.Bottom()  == solid.Bottom());
+    CHECK(trailing.Top()    == solid.Top());
+    CHECK(trailing.Bottom() == solid.Bottom());
+    CHECK(trailing.Right()  >  solid.Right());
     CHECK(blank.width  == 0);
     CHECK(blank.height == 0);
 }
 
 //-------------------------------------
 TEST_CASE("Font keeps packed glyphs intact while the texture grows") {
-    for(Font::ETextureGrowth growth : { Font::ETextureGrowth::Height, Font::ETextureGrowth::Width, Font::ETextureGrowth::Both }) {
+    for (Font::ETextureGrowth growth : { Font::ETextureGrowth::Height, Font::ETextureGrowth::Width, Font::ETextureGrowth::Both }) {
         CAPTURE(int(growth));
 
         Inspectable<Test::DefaultFont> font;
@@ -195,12 +195,12 @@ TEST_CASE("Font keeps packed glyphs intact while the texture grows") {
 
         std::mt19937        rng(7);
         std::vector<Packed> packed;
-        for(int i = 0; i < 1500; ++i) {
+        for (int i = 0; i < 1500; ++i) {
             Packed glyph {};
             glyph.width  = 1 + rng() % 40;
             glyph.height = 1 + rng() % 40;
             glyph.pixels.resize(glyph.width * glyph.height);
-            for(uint8_t &pixel : glyph.pixels)
+            for (uint8_t &pixel : glyph.pixels)
                 pixel = uint8_t(1 + rng() % 255);
 
             REQUIRE(font.PackGlyph(glyph.pixels.data(), glyph.width, glyph.height, glyph.data));
@@ -212,14 +212,14 @@ TEST_CASE("Font keeps packed glyphs intact while the texture grows") {
         const uint8_t *texels      = font.GetTexture();
         int           wrongPixels  = 0;
         int           rotated      = 0;
-        for(const Packed &glyph : packed) {
+        for (const Packed &glyph : packed) {
             const Font::Rect &rect = glyph.data.rect;
             rotated += glyph.data.rotated ? 1 : 0;
-            for(uint32_t y = 0; y < glyph.height; ++y) {
-                for(uint32_t x = 0; x < glyph.width; ++x) {
+            for (uint32_t y = 0; y < glyph.height; ++y) {
+                for (uint32_t x = 0; x < glyph.width; ++x) {
                     const size_t tx = size_t(rect.x) + (glyph.data.rotated ? y : x);
                     const size_t ty = size_t(rect.y) + (glyph.data.rotated ? x : y);
-                    if(texels[ty * textureWidth + tx] != glyph.pixels[y * glyph.width + x]) {
+                    if (texels[ty * textureWidth + tx] != glyph.pixels[y * glyph.width + x]) {
                         ++wrongPixels;
                     }
                 }
@@ -235,8 +235,8 @@ TEST_CASE("Font keeps packed glyphs intact while the texture grows") {
 
 //-------------------------------------
 TEST_CASE_TEMPLATE("Font keeps the spacing around every glyph empty", TFont, FONT_BACKENDS) {
-    for(uint32_t spacing : { 0u, 1u, 3u }) {
-        for(Font::ETextureGrowth growth : { Font::ETextureGrowth::Height, Font::ETextureGrowth::Width, Font::ETextureGrowth::Both }) {
+    for (uint32_t spacing : { 0u, 1u, 3u }) {
+        for (Font::ETextureGrowth growth : { Font::ETextureGrowth::Height, Font::ETextureGrowth::Width, Font::ETextureGrowth::Both }) {
             CAPTURE(spacing);
             CAPTURE(int(growth));
 
@@ -269,11 +269,11 @@ TEST_CASE_TEMPLATE("Font glyph padding grows every glyph without changing what i
     const uint32_t kLeft = 2, kTop = 3, kRight = 4, kBottom = 5;
     const int      kWidth = 900, kHeight = 400, kPosX = 30, kPosY = 20;
 
-    for(bool antialias : { false, true }) {
+    for (bool antialias : { false, true }) {
         CAPTURE(antialias);
         TFont plain;
         TFont padded;
-        for(TFont *font : { &plain, &padded }) {
+        for (TFont *font : { &plain, &padded }) {
             font->SetAntialias(antialias);
             font->SetAntialiasAllowEx(antialias);
         }
@@ -283,8 +283,8 @@ TEST_CASE_TEMPLATE("Font glyph padding grows every glyph without changing what i
         CHECK(padded.GetGlyphPaddingRight()  == kRight);
         CHECK(padded.GetGlyphPaddingBottom() == kBottom);
 
-        for(const char *text : kTexts) {
-            for(int height : { 12, 57 }) {
+        for (const char *text : kTexts) {
+            for (int height : { 12, 57 }) {
                 CAPTURE(text);
                 CAPTURE(height);
 
@@ -302,7 +302,7 @@ TEST_CASE_TEMPLATE("Font glyph padding grows every glyph without changing what i
                 plain.GetGlyphQuads(text, uint8_t(height), expectedQuads);
                 padded.GetGlyphQuads(text, uint8_t(height), quads);
                 REQUIRE(quads.size() == expectedQuads.size());
-                for(size_t i = 0; i < quads.size(); ++i) {
+                for (size_t i = 0; i < quads.size(); ++i) {
                     CHECK(quads[i].x      == expectedQuads[i].x - int32_t(kLeft));
                     CHECK(quads[i].y      == expectedQuads[i].y - int32_t(kTop));
                     CHECK(quads[i].width  == expectedQuads[i].width  + int32_t(kLeft + kRight));
@@ -312,10 +312,10 @@ TEST_CASE_TEMPLATE("Font glyph padding grows every glyph without changing what i
                 Font::Rect expectedBox, box;
                 plain.GetTextBox(text, uint8_t(height), &expectedBox);
                 padded.GetTextBox(text, uint8_t(height), &box);
-                CHECK(box.top()    == expectedBox.top()    - int32_t(kTop));
-                CHECK(box.bottom() == expectedBox.bottom() + int32_t(kBottom));
-                CHECK(box.left()   <= expectedBox.left());
-                CHECK(box.right()  >= expectedBox.right());
+                CHECK(box.Top()    == expectedBox.Top()    - int32_t(kTop));
+                CHECK(box.Bottom() == expectedBox.Bottom() + int32_t(kBottom));
+                CHECK(box.Left()   <= expectedBox.Left());
+                CHECK(box.Right()  >= expectedBox.Right());
             }
         }
         CHECK(CountSpacingErrors(padded) == 0);
@@ -356,7 +356,7 @@ TEST_CASE("Font without rotation never stores a glyph transposed") {
 
     RenderAscii(font, { 9, 23, 47, 64 });
     int rotated = 0;
-    for(const auto &entry : font.mCodePointHeightData) {
+    for (const auto &entry : font.mCodePointHeightData) {
         rotated += entry.second.rotated ? 1 : 0;
     }
     CHECK(rotated == 0);
@@ -369,8 +369,8 @@ TEST_CASE_TEMPLATE("Font text box contains every drawn pixel", TFont, FONT_BACKE
     font.SetAntialiasAllowEx(true);
 
     const int kWidth = 900, kHeight = 400, kPosX = 100, kPosY = 80;
-    for(const char *text : kTexts) {
-        for(int height : { 12, 32, 57 }) {
+    for (const char *text : kTexts) {
+        for (int height : { 12, 32, 57 }) {
             CAPTURE(text);
             CAPTURE(height);
 
@@ -378,9 +378,9 @@ TEST_CASE_TEMPLATE("Font text box contains every drawn pixel", TFont, FONT_BACKE
             font.DrawText(text, uint8_t(height), 0xffffffffu, buffer.data(), kWidth, kPosX, kPosY);
 
             int minX = kWidth, minY = kHeight, maxX = -1, maxY = -1;
-            for(int y = 0; y < kHeight; ++y) {
-                for(int x = 0; x < kWidth; ++x) {
-                    if((buffer[y * kWidth + x] & 0xffffff) != 0) {
+            for (int y = 0; y < kHeight; ++y) {
+                for (int x = 0; x < kWidth; ++x) {
+                    if ((buffer[y * kWidth + x] & 0xffffff) != 0) {
                         minX = std::min(minX, x);
                         minY = std::min(minY, y);
                         maxX = std::max(maxX, x);
@@ -392,10 +392,10 @@ TEST_CASE_TEMPLATE("Font text box contains every drawn pixel", TFont, FONT_BACKE
 
             Font::Rect box;
             font.GetTextBox(text, uint8_t(height), &box);
-            CHECK(minX >= kPosX + box.left());
-            CHECK(minY >= kPosY + box.top());
-            CHECK(maxX <  kPosX + box.right());
-            CHECK(maxY <  kPosY + box.bottom());
+            CHECK(minX >= kPosX + box.Left());
+            CHECK(minY >= kPosY + box.Top());
+            CHECK(maxX <  kPosX + box.Right());
+            CHECK(maxY <  kPosY + box.Bottom());
         }
     }
 }
@@ -419,7 +419,7 @@ TEST_CASE_TEMPLATE("Font size modes", TFont, FONT_BACKENDS) {
     TFont font;
     REQUIRE(font.mUnitsPerEm > 0);
 
-    for(int height = 8; height <= 96; height += 8) {
+    for (int height = 8; height <= 96; height += 8) {
         CAPTURE(height);
         const HeightData &lineHeight = font.GetDataForHeight(uint8_t(height));
         // Ascent and descent are rounded outwards, so the line can be one pixel taller.
@@ -428,7 +428,7 @@ TEST_CASE_TEMPLATE("Font size modes", TFont, FONT_BACKENDS) {
     }
 
     font.SetSizeMode(Font::ESizeMode::EmSize);
-    for(int height = 8; height <= 96; height += 8) {
+    for (int height = 8; height <= 96; height += 8) {
         CAPTURE(height);
         CHECK(font.GetDataForHeight(uint8_t(height)).scale == doctest::Approx(float(height) / float(font.mUnitsPerEm)));
     }
@@ -494,7 +494,7 @@ TEST_CASE_TEMPLATE("Font rejects antialias weights it cannot apply", TFont, FONT
 
 //-------------------------------------
 TEST_CASE_TEMPLATE("Font used texture size covers every glyph", TFont, FONT_BACKENDS) {
-    for(Font::ELevelChoiceHeuristic heuristic : { Font::ELevelChoiceHeuristic::LevelBottomLeft, Font::ELevelChoiceHeuristic::LevelMinWasteFit }) {
+    for (Font::ELevelChoiceHeuristic heuristic : { Font::ELevelChoiceHeuristic::LevelBottomLeft, Font::ELevelChoiceHeuristic::LevelMinWasteFit }) {
         CAPTURE(int(heuristic));
 
         TFont font;
@@ -508,9 +508,9 @@ TEST_CASE_TEMPLATE("Font used texture size covers every glyph", TFont, FONT_BACK
         CHECK(usedHeight <= int(font.GetTextureHeight()));
 
         int outside = 0;
-        for(const auto &entry : font.mCodePointHeightData) {
+        for (const auto &entry : font.mCodePointHeightData) {
             const Font::Rect &rect = entry.second.rect;
-            if(entry.second.glyph > 0 && (rect.right() + spacing > usedWidth || rect.bottom() + spacing > usedHeight)) {
+            if (entry.second.glyph > 0 && (rect.Right() + spacing > usedWidth || rect.Bottom() + spacing > usedHeight)) {
                 ++outside;
             }
         }
@@ -533,29 +533,29 @@ TEST_CASE_TEMPLATE("Font reads kerning from GPOS", TFont, FONT_BACKENDS) {
 //-------------------------------------
 TEST_CASE_TEMPLATE("Font preload draws the same as rendering each glyph when it is drawn", TFont, FONT_BACKENDS) {
     std::string text;
-    for(char c = ' '; c <= '~'; ++c) {
+    for (char c = ' '; c <= '~'; ++c) {
         text += c;
     }
-    for(const char *sample : kTexts) {
+    for (const char *sample : kTexts) {
         text += sample;
     }
 
     TFont preloaded;
     TFont lazy;
-    for(TFont *font : { &preloaded, &lazy }) {
+    for (TFont *font : { &preloaded, &lazy }) {
         font->SetAntialias(true);
         font->SetAntialiasAllowEx(true);
     }
 
     // At 90 pixels the glyphs do not fit in the first texture, so it has to grow.
-    for(int height : { 17, 90 }) {
+    for (int height : { 17, 90 }) {
         CAPTURE(height);
         const uint32_t textureHeight = preloaded.GetTextureHeight();
         REQUIRE(preloaded.Preload(text.c_str(), uint8_t(height)));
         CHECK(preloaded.GetTextureHeight() >= textureHeight);
 
         const uint32_t version = preloaded.GetTextureVersion();
-        for(const char *text : kTexts) {
+        for (const char *text : kTexts) {
             CAPTURE(text);
             std::vector<uint32_t> expected(900 * 400, 0);
             std::vector<uint32_t> buffer(900 * 400, 0);
@@ -624,8 +624,8 @@ TEST_CASE_TEMPLATE("Font loads the kerning of every pair of rendered glyphs", TF
     font.LoadAllKerningPairs();
 
     int kernedPairs = 0;
-    for(const char left : std::string("AVTaeoy.,")) {
-        for(const char right : std::string("AVTaeoy.,")) {
+    for (const char left : std::string("AVTaeoy.,")) {
+        for (const char right : std::string("AVTaeoy.,")) {
             CAPTURE(left);
             CAPTURE(right);
             const uint32_t leftGlyph  = font.GetCodePointGlyph(uint32_t(left));
@@ -634,7 +634,7 @@ TEST_CASE_TEMPLATE("Font loads the kerning of every pair of rendered glyphs", TF
             const auto     cached     = font.mKerningData.find((uint64_t(leftGlyph) << 32) | rightGlyph);
             // Pairs without kerning are not kept.
             CHECK((cached != font.mKerningData.end()) == (kerning != 0));
-            if(cached != font.mKerningData.end()) {
+            if (cached != font.mKerningData.end()) {
                 CHECK(cached->second == kerning);
                 ++kernedPairs;
             }
@@ -669,8 +669,8 @@ TEST_CASE_TEMPLATE("Font glyph quads place the texels where DrawText draws them"
 
     const int kWidth = 900, kHeight = 400, kPosX = 30, kPosY = 20;
     int       rotated = 0;
-    for(const char *text : kTexts) {
-        for(int height : { 12, 32, 57 }) {
+    for (const char *text : kTexts) {
+        for (int height : { 12, 32, 57 }) {
             CAPTURE(text);
             CAPTURE(height);
 
@@ -684,14 +684,14 @@ TEST_CASE_TEMPLATE("Font glyph quads place the texels where DrawText draws them"
             std::vector<uint32_t> buffer(kWidth * kHeight, 0);
             const uint8_t         *texels      = font.GetTexture();
             const size_t          textureWidth = font.GetTextureWidth();
-            for(const GlyphQuad &quad : quads) {
+            for (const GlyphQuad &quad : quads) {
                 rotated += quad.rotated ? 1 : 0;
-                for(int y = 0; y < quad.height; ++y) {
-                    for(int x = 0; x < quad.width; ++x) {
+                for (int y = 0; y < quad.height; ++y) {
+                    for (int x = 0; x < quad.width; ++x) {
                         const size_t  tx       = size_t(quad.textureRect.x + (quad.rotated ? y : x));
                         const size_t  ty       = size_t(quad.textureRect.y + (quad.rotated ? x : y));
                         const uint8_t coverage = texels[ty * textureWidth + tx];
-                        if(coverage != 0) {
+                        if (coverage != 0) {
                             uint32_t       &pixel   = buffer[size_t(kPosY + quad.y + y) * kWidth + size_t(kPosX + quad.x + x)];
                             const uint32_t previous = pixel & 0xff;
                             // Divided by 255 and rounded once, as Blinn does.
@@ -716,8 +716,8 @@ TEST_CASE_TEMPLATE("Font backends place glyphs the same way", TFont, FONT_OTHER_
     Inspectable<Test::DefaultFont> reference;
     TFont                          font;
 
-    for(int height = 10; height <= 70; height += 6) {
-        for(uint32_t codePoint = 33; codePoint < 127; ++codePoint) {
+    for (int height = 10; height <= 70; height += 6) {
+        for (uint32_t codePoint = 33; codePoint < 127; ++codePoint) {
             CAPTURE(height);
             CAPTURE(codePoint);
 
@@ -744,8 +744,8 @@ TEST_CASE_TEMPLATE("Font backends draw every glyph in the same place", TFont, FO
     REQUIRE(font.GetStatus() == Font::EStatus::Ok);
 
     const int kWidth = 160, kHeight = 160, kPosX = 50, kPosY = 20;
-    for(int height = 8; height <= 96; height += 4) {
-        for(uint32_t codePoint = 33; codePoint < 127; ++codePoint) {
+    for (int height = 8; height <= 96; height += 4) {
+        for (uint32_t codePoint = 33; codePoint < 127; ++codePoint) {
             CAPTURE(height);
             CAPTURE(codePoint);
 
@@ -806,7 +806,7 @@ namespace {
     uint64_t
     SumCoverage(const std::vector<uint32_t> &buffer) {
         uint64_t sum = 0;
-        for(const uint32_t pixel : buffer) {
+        for (const uint32_t pixel : buffer) {
             sum += pixel & 0xff;
         }
         return sum;
@@ -848,7 +848,7 @@ TEST_CASE("FontFT monochrome draws pixels fully on or off") {
     std::vector<uint32_t> gray = DrawWhite(font, "Hamburg", 20);
     CHECK(std::count_if(gray.begin(), gray.end(), isGray) > 0);
 
-    for(FontFT::EHinting hinting : { FontFT::EHinting::None, FontFT::EHinting::Light, FontFT::EHinting::Normal, FontFT::EHinting::Auto }) {
+    for (FontFT::EHinting hinting : { FontFT::EHinting::None, FontFT::EHinting::Light, FontFT::EHinting::Normal, FontFT::EHinting::Auto }) {
         CAPTURE(int(hinting));
         font.SetHinting(hinting);
         font.SetMonochrome(true);
@@ -868,7 +868,7 @@ TEST_CASE("FontFT hinting keeps the advances unless it works sideways") {
     font.SetHinting(FontFT::EHinting::Light);
     CHECK(font.GetCodePointDataForHeight('a', 13).advanceWidth == outline);
 
-    for(FontFT::EHinting hinting : { FontFT::EHinting::Normal, FontFT::EHinting::Auto }) {
+    for (FontFT::EHinting hinting : { FontFT::EHinting::Normal, FontFT::EHinting::Auto }) {
         CAPTURE(int(hinting));
         font.SetHinting(hinting);
         const float hinted = font.GetCodePointDataForHeight('a', 13).advanceWidth;
@@ -882,7 +882,7 @@ TEST_CASE("FontFT hinting changes the glyphs at small sizes") {
     Inspectable<FontFT>         font;
     const std::vector<uint32_t> outline = DrawWhite(font, "Hamburgefonstiv", 11);
 
-    for(FontFT::EHinting hinting : { FontFT::EHinting::Light, FontFT::EHinting::Normal, FontFT::EHinting::Auto }) {
+    for (FontFT::EHinting hinting : { FontFT::EHinting::Light, FontFT::EHinting::Normal, FontFT::EHinting::Auto }) {
         CAPTURE(int(hinting));
         font.SetHinting(hinting);
         CHECK(DrawWhite(font, "Hamburgefonstiv", 11) != outline);

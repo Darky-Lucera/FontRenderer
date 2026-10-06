@@ -114,7 +114,7 @@ typedef struct fr_glyph_quad {
 
 // Creates a font using the selected rasterizer. On failure, *out_font is NULL.
 // A backend the library was built without gives FR_STATUS_INVALID_BACKEND.
-fr_status fr_font_create(const char *font_name, fr_font_backend backend, fr_font **out_font);
+fr_status fr_font_create(const char *file_name, fr_font_backend backend, fr_font **out_font);
 // Creates a font from the files fr_font_save_baked writes. It cannot render new glyphs, so the functions
 // that change how glyphs are rendered give FR_STATUS_INVALID_BACKEND, and their getters give 0, false or *_INVALID.
 // The texture can also be a 32-bit TGA with alpha, or a 16-bit grayscale TGA with alpha, which give an
@@ -148,7 +148,7 @@ fr_status fr_font_save_baked(const fr_font *font, const char *metrics_file, cons
 // any operation that renders a glyph, because the texture can grow.
 // The texture has rows of fr_font_get_texture_width texels, in the format fr_font_get_texture_format gives.
 // Fonts created with fr_font_create always have an FR_FONT_TEXTURE_FORMAT_ALPHA8 texture.
-const char    *fr_font_get_name(const fr_font *font);
+const char    *fr_font_get_file_name(const fr_font *font);
 const uint8_t *fr_font_get_texture(const fr_font *font);
 fr_font_texture_format fr_font_get_texture_format(const fr_font *font);
 uint32_t       fr_font_get_texture_width(const fr_font *font);
@@ -182,7 +182,7 @@ fr_font_packing_heuristic    fr_font_get_packing_heuristic(const fr_font *font);
 
 // A rotated glyph is stored transposed. An effect added to the saved texture that is not symmetric
 // about the diagonal, like a vertical gradient, would look wrong on it. Only affects glyphs packed afterwards.
-fr_status fr_font_set_allow_rotation(fr_font *font, bool allow);
+fr_status fr_font_set_allow_rotation(fr_font *font, bool enabled);
 bool      fr_font_get_allow_rotation(const fr_font *font);
 
 // The destination size is not known. Set clipping so every written pixel lies inside

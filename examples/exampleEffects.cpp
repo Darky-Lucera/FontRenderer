@@ -172,7 +172,7 @@ main(int argc, char *argv[]) {
             window = nullptr;
             break;
         }
-    } while(mfb_wait_sync(window));
+    } while (mfb_wait_sync(window));
 
     example_release();
     mfb_timer_destroy(timer);

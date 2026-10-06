@@ -17,7 +17,7 @@ using namespace MindShake;
 FontBaked::FontBaked(const char *metricsFile, const char *textureFile) : FontBase(metricsFile) {
     try {
         mStatus = LoadGlyphs(metricsFile);
-        if(mStatus == EStatus::Ok) {
+        if (mStatus == EStatus::Ok) {
             mStatus = LoadTexture(textureFile);
         }
     }
@@ -30,7 +30,7 @@ FontBaked::FontBaked(const char *metricsFile, const char *textureFile) : FontBas
 FontBaked::FontBaked(const char *metricsFile, const uint8_t *texture, uint32_t width, uint32_t height, ETextureFormat format) : FontBase(metricsFile) {
     try {
         mStatus = LoadGlyphs(metricsFile);
-        if(mStatus == EStatus::Ok) {
+        if (mStatus == EStatus::Ok) {
             mStatus = SetTexture(texture, width, height, format);
         }
     }
@@ -43,14 +43,14 @@ FontBaked::FontBaked(const char *metricsFile, const uint8_t *texture, uint32_t w
 FontBaked::EStatus
 FontBaked::LoadGlyphs(const char *metricsFile) {
     const EStatus status = LoadMetrics(metricsFile);
-    if(status != EStatus::Ok) {
+    if (status != EStatus::Ok) {
         return status;
     }
 
-    for(const auto &entry : mCodePointHeightData) {
+    for (const auto &entry : mCodePointHeightData) {
         CodePointHeight cph;
         cph.value = entry.first;
-        if(entry.second.glyph > 0) {
+        if (entry.second.glyph > 0) {
             mCodePointGlyphs[cph.codePoint] = uint32_t(entry.second.glyph);
         }
     }
@@ -61,25 +61,25 @@ FontBaked::LoadGlyphs(const char *metricsFile) {
 //-------------------------------------
 FontBaked::EStatus
 FontBaked::LoadTexture(const char *textureFile) {
-    if(textureFile == nullptr) {
+    if (textureFile == nullptr) {
         return EStatus::CannotOpenFile;
     }
 
     MappedFile    file;
     const EStatus status = GetFileStatus(file.Open(textureFile));
-    if(status != EStatus::Ok) {
+    if (status != EStatus::Ok) {
         return status;
     }
 
     std::vector<uint8_t> pixels;
     uint32_t             width, height, channels;
     ETgaAlpha            alpha;
-    if(ReadTga(file.GetData(), file.GetSize(), pixels, width, height, channels, alpha) == false) {
+    if (ReadTga(file.GetData(), file.GetSize(), pixels, width, height, channels, alpha) == false) {
         return EStatus::InvalidTexture;
     }
 
     ETextureFormat format = ETextureFormat::Alpha8;
-    if(channels == 4) {
+    if (channels == 4) {
         format = (alpha == ETgaAlpha::Premultiplied) ? ETextureFormat::BGRA32Premultiplied : ETextureFormat::BGRA32;
     }
 
@@ -90,23 +90,23 @@ FontBaked::LoadTexture(const char *textureFile) {
 FontBaked::EStatus
 FontBaked::SetTexture(const uint8_t *texture, uint32_t width, uint32_t height, ETextureFormat format) {
     // The glyphs were checked against the size in the metrics file.
-    if(width != mTextureWidth || height != mTextureHeight) {
+    if (width != mTextureWidth || height != mTextureHeight) {
         return EStatus::InvalidTexture;
     }
 
     // Without a texture, the format describes the copy the program keeps, like one in the GPU.
-    if(texture != nullptr) {
+    if (texture != nullptr) {
         const size_t texelCount = size_t(width) * height;
         mTexture.assign(texture, texture + texelCount * GetBytesPerTexel(format));
-        if(format == ETextureFormat::BGRA32) {
+        if (format == ETextureFormat::BGRA32) {
             PremultiplyTexels(mTexture.data(), texelCount);
             format = ETextureFormat::BGRA32Premultiplied;
         }
-        else if(format == ETextureFormat::BGRA32Premultiplied) {
+        else if (format == ETextureFormat::BGRA32Premultiplied) {
             // A broken texture can have a color brighter than its alpha allows, and DrawText needs it not to:
             // otherwise its blend overflows into the next channel.
-            for(size_t i = 0; i < mTexture.size(); i += 4) {
-                for(size_t channel = i; channel < i + 3; ++channel) {
+            for (size_t i = 0; i < mTexture.size(); i += 4) {
+                for (size_t channel = i; channel < i + 3; ++channel) {
                     mTexture[channel] = std::min(mTexture[channel], mTexture[i + 3]);
                 }
             }
@@ -120,7 +120,7 @@ FontBaked::SetTexture(const uint8_t *texture, uint32_t width, uint32_t height, E
 //-------------------------------------
 const HeightData &
 FontBaked::GetDataForHeight(uint8_t height) {
-    if(mStatus != EStatus::Ok) {
+    if (mStatus != EStatus::Ok) {
         return mHeightData[0];
     }
 
@@ -131,7 +131,7 @@ FontBaked::GetDataForHeight(uint8_t height) {
 //-------------------------------------
 const CodePointHeightData &
 FontBaked::GetCodePointDataForHeight(uint32_t codePoint, uint8_t height) {
-    if(mStatus != EStatus::Ok) {
+    if (mStatus != EStatus::Ok) {
         return mCodePointHeightData[0];
     }
 

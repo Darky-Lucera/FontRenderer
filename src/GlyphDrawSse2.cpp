@@ -320,7 +320,7 @@ namespace {
     FONTRENDERER_ALWAYS_INLINE void
     PrepareBand(__m128i band, __m128i &row0, __m128i &row1, __m128i &row2, __m128i &row3) {
 #if defined(FONTRENDERER_GLYPHDRAW_X64V2)
-        if(UsesMadd<kOpaque>::value) {
+        if (UsesMadd<kOpaque>::value) {
             WeightsBand(band, row0, row1, row2, row3);
             return;
         }
@@ -437,7 +437,7 @@ namespace {
     template <bool kRotated>
     FONTRENDERER_ALWAYS_INLINE uint32_t
     LoadCoverage(const uint8_t *mask, size_t step) {
-        if(kRotated) {
+        if (kRotated) {
             return uint32_t(mask[0]) | (uint32_t(mask[step]) << 8) | (uint32_t(mask[2 * step]) << 16) | (uint32_t(mask[3 * step]) << 24);
         }
 
@@ -449,7 +449,7 @@ namespace {
     template <bool kRotated>
     FONTRENDERER_ALWAYS_INLINE uint32_t
     LoadCoveragePair(const uint8_t *mask, size_t step) {
-        if(kRotated) {
+        if (kRotated) {
             return uint32_t(mask[0]) | (uint32_t(mask[step]) << 8);
         }
 
@@ -473,10 +473,10 @@ namespace {
     template <bool kOpaque, bool kSkip, bool kRead>
     FONTRENDERER_ALWAYS_INLINE void
     DrawCoverage(const Color &color, __m128i prepared, bool none, bool full, uint32_t *p, __m128i pixels) {
-        if(kSkip && none) {
+        if (kSkip && none) {
             return;
         }
-        if(kSkip && kOpaque && full) {
+        if (kSkip && kOpaque && full) {
             StoreQuad(p, color.solid);
             return;
         }
@@ -490,7 +490,7 @@ namespace {
     FONTRENDERER_ALWAYS_INLINE void
     DrawTexel(const Color &color, const uint8_t *texel, uint32_t *p) {
         const uint32_t t = Load32(texel);
-        if((t >> 24) != 0) {
+        if ((t >> 24) != 0) {
             StoreOne(p, BlendTexels<kOpaque>(color, _mm_cvtsi32_si128(int(t)), LoadOne(p)));
         }
     }
@@ -537,10 +537,10 @@ namespace {
         //-----------------------------
         FONTRENDERER_ALWAYS_INLINE void
         Narrow(int32_t w) const {
-            if(w == 1) {
+            if (w == 1) {
                 StoreOne(dst, BlendPrepared<kOpaque>(UsesMadd<kOpaque>(), color, Prepare<kOpaque>(_mm_cvtsi32_si128(int(mask[0]))), LoadOne(dst)));
             }
-            else if(w == 2) {
+            else if (w == 2) {
                 StorePair(dst, BlendPrepared<kOpaque>(UsesMadd<kOpaque>(), color, Prepare<kOpaque>(_mm_cvtsi32_si128(int(LoadCoveragePair<kRotated>(mask, step)))), LoadPair(dst)));
             }
             else {
@@ -592,18 +592,18 @@ namespace {
         Draw(size_t x, const Rows &pixels) const {
             const uint8_t *column = &mask[x * step];
             const __m128i band    = LoadBand(column, &column[step], &column[2 * step], &column[3 * step]);
-            if(kSkip) {
-                if(IsEmptyBand(band)) {
+            if (kSkip) {
+                if (IsEmptyBand(band)) {
                     return;
                 }
-                if(kOpaque && IsFullBand(band)) {
-                    if(Draws(0)) {
+                if (kOpaque && IsFullBand(band)) {
+                    if (Draws(0)) {
                         StoreQuad(At(0, x), color.solid);
                     }
-                    if(Draws(1)) {
+                    if (Draws(1)) {
                         StoreQuad(At(1, x), color.solid);
                     }
-                    if(Draws(2)) {
+                    if (Draws(2)) {
                         StoreQuad(At(2, x), color.solid);
                     }
                     StoreQuad(At(3, x), color.solid);
@@ -613,13 +613,13 @@ namespace {
 
             __m128i prepared0, prepared1, prepared2, prepared3;
             PrepareBand<kOpaque>(band, prepared0, prepared1, prepared2, prepared3);
-            if(Draws(0)) {
+            if (Draws(0)) {
                 DrawCoverage<kOpaque, false, kRead>(color, prepared0, false, false, At(0, x), pixels.row0);
             }
-            if(Draws(1)) {
+            if (Draws(1)) {
                 DrawCoverage<kOpaque, false, kRead>(color, prepared1, false, false, At(1, x), pixels.row1);
             }
-            if(Draws(2)) {
+            if (Draws(2)) {
                 DrawCoverage<kOpaque, false, kRead>(color, prepared2, false, false, At(2, x), pixels.row2);
             }
             DrawCoverage<kOpaque, false, kRead>(color, prepared3, false, false, At(3, x), pixels.row3);
@@ -663,7 +663,7 @@ namespace {
         FONTRENDERER_ALWAYS_INLINE void
         Draw(size_t x, __m128i pixels) const {
             const __m128i texels = LoadQuad(&src[4 * x]);
-            if(kSkip && IsTransparent(texels)) {
+            if (kSkip && IsTransparent(texels)) {
                 return;
             }
 
@@ -692,10 +692,10 @@ namespace {
         //-----------------------------
         FONTRENDERER_ALWAYS_INLINE void
         Narrow(int32_t w) const {
-            if(w == 1) {
+            if (w == 1) {
                 StoreOne(dst, BlendTexels<kOpaque>(color, LoadOne(src), LoadOne(dst)));
             }
-            else if(w == 2) {
+            else if (w == 2) {
                 StorePair(dst, BlendTexels<kOpaque>(color, LoadPair(src), LoadPair(dst)));
             }
             else {
@@ -716,7 +716,7 @@ namespace {
     DrawBlocks(const TLine &line, int32_t w) {
         const size_t tail   = size_t(w) - 4;
         const auto   pixels = line.ReadQuad(tail);
-        for(size_t x = 0; x < tail; x += 4) {
+        for (size_t x = 0; x < tail; x += 4) {
             line.Quad(x);
         }
         line.QuadRead(tail, pixels);
@@ -727,10 +727,10 @@ namespace {
     template <class TRow>
     FONTRENDERER_ALWAYS_INLINE void
     DrawRow(const TRow &row, int32_t w) {
-        if(w >= 4) {
+        if (w >= 4) {
             DrawBlocks(row, w);
         }
-        else if(w > 0) {
+        else if (w > 0) {
             row.Narrow(w);
         }
     }
@@ -743,18 +743,18 @@ namespace {
     DrawAlpha8Rotated(const uint8_t *mask, size_t stepX, size_t stepY, int32_t width, int32_t height,
                       uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t alpha) {
         const Color color = MakeColor(premultiplied, alpha);
-        if(stepY == 1 && width >= 4 && height >= 4) {
+        if (stepY == 1 && width >= 4 && height >= 4) {
             int32_t y = 0;
-            for(; y + 4 <= height; y += 4) {
+            for (; y + 4 <= height; y += 4) {
                 DrawBlocks(Alpha8Band<kOpaque, kSkip, false> { color, &mask[size_t(y)], stepX, &dst[size_t(y) * dstStride], dstStride, 0 }, width);
             }
-            if(y < height) {
+            if (y < height) {
                 const int32_t top = height - 4;
                 DrawBlocks(Alpha8Band<kOpaque, kSkip, true> { color, &mask[size_t(top)], stepX, &dst[size_t(top) * dstStride], dstStride, y - top }, width);
             }
         }
         else {
-            for(int32_t y = 0; y < height; ++y) {
+            for (int32_t y = 0; y < height; ++y) {
                 DrawRow(Alpha8Row<kOpaque, kSkip, true> { color, &mask[size_t(y) * stepY], stepX, &dst[size_t(y) * dstStride] }, width);
             }
         }
@@ -764,7 +764,7 @@ namespace {
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE void
     DrawAlpha8Rows(const Color &color, const uint8_t *mask, size_t stepY, int32_t width, int32_t height, uint32_t *dst, uint32_t dstStride) {
-        for(int32_t y = 0; y < height; ++y) {
+        for (int32_t y = 0; y < height; ++y) {
             DrawRow(Alpha8Row<kOpaque, kSkip, false> { color, &mask[size_t(y) * stepY], 1, &dst[size_t(y) * dstStride] }, width);
         }
     }
@@ -776,8 +776,8 @@ namespace {
     DrawAlpha8(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t alpha) {
         const uint8_t *mask = &texture[offset];
-        if(stepX != 1) {
-            if(UsesShortcuts<kOpaque>(width)) {
+        if (stepX != 1) {
+            if (UsesShortcuts<kOpaque>(width)) {
                 DrawAlpha8Rotated<kOpaque, true>(mask, stepX, stepY, width, height, dst, dstStride, premultiplied, alpha);
             }
             else {
@@ -787,7 +787,7 @@ namespace {
         }
 
         const Color color = MakeColor(premultiplied, alpha);
-        if(UsesShortcuts<kOpaque>(width)) {
+        if (UsesShortcuts<kOpaque>(width)) {
             DrawAlpha8Rows<kOpaque, true>(color, mask, stepY, width, height, dst, dstStride);
         }
         else {
@@ -801,17 +801,17 @@ namespace {
     FONTRENDERER_ALWAYS_INLINE void
     DrawBgraRows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
                  uint32_t *dst, uint32_t dstStride) {
-        if(stepX != 1) {
-            for(int32_t y = 0; y < height; ++y) {
+        if (stepX != 1) {
+            for (int32_t y = 0; y < height; ++y) {
                 uint32_t *row = &dst[size_t(y) * dstStride];
-                for(int32_t x = 0; x < width; ++x) {
+                for (int32_t x = 0; x < width; ++x) {
                     DrawTexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
                 }
             }
             return;
         }
 
-        for(int32_t y = 0; y < height; ++y) {
+        for (int32_t y = 0; y < height; ++y) {
             DrawRow(BgraRow<kOpaque, kSkip> { color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride] }, width);
         }
     }
@@ -823,7 +823,7 @@ namespace {
              uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t alpha) {
         const Color   color = MakeColor(premultiplied, alpha);
         const uint8_t *src  = &texture[offset * 4];
-        if(UsesShortcuts<kOpaque>(width)) {
+        if (UsesShortcuts<kOpaque>(width)) {
             DrawBgraRows<kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
         }
         else {
@@ -840,7 +840,7 @@ GlyphDraw::GetX64v2DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
 #else
 GlyphDraw::GetSse2DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
 #endif
-    if(bytesPerTexel == 1) {
+    if (bytesPerTexel == 1) {
         return opaque ? DrawAlpha8<true> : DrawAlpha8<false>;
     }
 

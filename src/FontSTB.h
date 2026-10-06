@@ -23,13 +23,13 @@ namespace MindShake {
     //---------------------------------
     class FontSTB : public Font {
         public:
-            explicit                    FontSTB(const char *fontName);
+            explicit                    FontSTB(const char *fileName);
 
         protected:
             int                         GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
 
-            const CodePointData &       GetCodePointData(uint32_t index) override;
-            bool                        RasterizeGlyph(const CodePointData &codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) override;
+            const CodePointData &       GetCodePointData(uint32_t codePoint) override;
+            bool                        RasterizeGlyph(const CodePointData &codePointData, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) override;
 
         protected:
             stbtt_fontinfo          mInfo {};       // Points into mFontFile

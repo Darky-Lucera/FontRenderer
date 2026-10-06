@@ -163,7 +163,7 @@ namespace {
     template <bool kRotated>
     FONTRENDERER_ALWAYS_INLINE uint32_t
     LoadCoverage4(const uint8_t *mask, size_t step) {
-        if(kRotated) {
+        if (kRotated) {
             return uint32_t(mask[0]) | (uint32_t(mask[step]) << 8) | (uint32_t(mask[2 * step]) << 16) | (uint32_t(mask[3 * step]) << 24);
         }
 
@@ -175,7 +175,7 @@ namespace {
     template <bool kRotated>
     FONTRENDERER_ALWAYS_INLINE uint64_t
     LoadCoverage8(const uint8_t *mask, size_t step) {
-        if(kRotated) {
+        if (kRotated) {
             return uint64_t(LoadCoverage4<true>(mask, step)) | (uint64_t(LoadCoverage4<true>(&mask[4 * step], step)) << 32);
         }
 
@@ -223,14 +223,14 @@ namespace {
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE bool
     DrawShortcut8(const Color &color, uint8x8_t coverage, uint8_t *lo, uint8_t *hi) {
-        if(kSkip == false) {
+        if (kSkip == false) {
             return false;
         }
         const uint64_t m = GetLanes(coverage);
-        if(m == 0) {
+        if (m == 0) {
             return true;
         }
-        if(kOpaque && m == ~uint64_t(0)) {
+        if (kOpaque && m == ~uint64_t(0)) {
             vst1q_u8(lo, color.quad);
             vst1q_u8(hi, color.quad);
             return true;
@@ -244,12 +244,12 @@ namespace {
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE void
     DrawPairRead(const Color &color, uint8x8_t coverage, uint8x16_t loPixels, uint8x16_t hiPixels, uint8_t *lo, uint8_t *hi) {
-        if(DrawShortcut8<kOpaque, kSkip>(color, coverage, lo, hi) == false) {
+        if (DrawShortcut8<kOpaque, kSkip>(color, coverage, lo, hi) == false) {
             const uint8x16_t loCoverage = Pick(coverage, color.spreadLow);
             const uint8x16_t hiCoverage = Pick(coverage, color.spreadHigh);
             uint8x16_t       loAlpha    = loCoverage;
             uint8x16_t       hiAlpha    = hiCoverage;
-            if(kOpaque == false) {
+            if (kOpaque == false) {
                 const uint8x8_t alpha = GetAlpha<kOpaque>(color, coverage);
                 loAlpha = Pick(alpha, color.spreadLow);
                 hiAlpha = Pick(alpha, color.spreadHigh);
@@ -264,7 +264,7 @@ namespace {
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE void
     DrawPair(const Color &color, uint8x8_t coverage, uint8_t *lo, uint8_t *hi) {
-        if(DrawShortcut8<kOpaque, kSkip>(color, coverage, lo, hi) == false) {
+        if (DrawShortcut8<kOpaque, kSkip>(color, coverage, lo, hi) == false) {
             DrawPairRead<kOpaque, false>(color, coverage, vld1q_u8(lo), vld1q_u8(hi), lo, hi);
         }
     }
@@ -274,12 +274,12 @@ namespace {
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE void
     DrawQuadRead(const Color &color, uint8x8_t coverage, uint8x16_t pixels, uint8_t *bytes) {
-        if(kSkip) {
+        if (kSkip) {
             const uint32_t m = uint32_t(GetLanes(coverage));
-            if(m == 0) {
+            if (m == 0) {
                 return;
             }
-            if(kOpaque && m == 0xffffffffu) {
+            if (kOpaque && m == 0xffffffffu) {
                 vst1q_u8(bytes, color.quad);
                 return;
             }
@@ -296,10 +296,10 @@ namespace {
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE void
     DrawShortRow(const Color &color, uint8x8_t coverage, uint8_t *bytes, int32_t w) {
-        if(w == 7) {
+        if (w == 7) {
             DrawPair<kOpaque, kSkip>(color, coverage, bytes, bytes + 12);
         }
-        else if(w == 4) {
+        else if (w == 4) {
             DrawQuadRead<kOpaque, kSkip>(color, coverage, vld1q_u8(bytes), bytes);
         }
         else {
@@ -355,15 +355,15 @@ namespace {
     template <bool kOpaque>
     FONTRENDERER_ALWAYS_INLINE void
     DrawAlpha8Narrow(const Color &color, const uint8_t *mask, size_t step, uint32_t *dst, int32_t w) {
-        if(w == 1) {
+        if (w == 1) {
             const uint8x8_t result = BlendAlpha8Pair<kOpaque>(color, mask[0], vreinterpret_u8_u32(vld1_dup_u32(dst)));
             vst1_lane_u32(dst, vreinterpret_u32_u8(result), 0);
         }
-        else if(w == 2) {
+        else if (w == 2) {
             const uint8x8_t result = BlendAlpha8Pair<kOpaque>(color, uint32_t(mask[0]) | (uint32_t(mask[step]) << 8), vreinterpret_u8_u32(vld1_u32(dst)));
             vst1_u32(dst, vreinterpret_u32_u8(result));
         }
-        else if(w == 3) {
+        else if (w == 3) {
             const uint32_t  middle = mask[step];
             const uint8x8_t first  = vreinterpret_u8_u32(vld1_u32(dst));
             const uint8x8_t second = vreinterpret_u8_u32(vld1_u32(dst + 1));
@@ -380,19 +380,19 @@ namespace {
     FONTRENDERER_ALWAYS_INLINE void
     DrawAlpha8Row(const Color &color, const uint8_t *mask, size_t step, uint32_t *dst, int32_t w) {
         uint8_t *bytes = reinterpret_cast<uint8_t *>(dst);
-        if(w >= 8) {
+        if (w >= 8) {
             const size_t full = size_t(w) & ~size_t(7);
             const size_t rest = size_t(w) & 7;
             size_t       x    = 0;
-            for(; x + 8 < full; x += 8) {
+            for (; x + 8 < full; x += 8) {
                 DrawBlock<kOpaque, kSkip>(color, vcreate_u8(LoadCoverage8<kRotated>(&mask[x * step], step)), bytes + 4 * x);
             }
 
             const uint8x8_t coverage = vcreate_u8(LoadCoverage8<kRotated>(&mask[x * step], step));
-            if(rest == 0) {
+            if (rest == 0) {
                 DrawBlock<kOpaque, kSkip>(color, coverage, bytes + 4 * x);
             }
-            else if(rest <= 4) {
+            else if (rest <= 4) {
                 const size_t tail = size_t(w) - 4;
                 DrawBlockAndQuad<kOpaque, kSkip>(color, coverage, bytes + 4 * x, vcreate_u8(LoadCoverage4<kRotated>(&mask[tail * step], step)), bytes + 4 * tail);
             }
@@ -401,7 +401,7 @@ namespace {
                 DrawBlockAndLast<kOpaque, kSkip>(color, coverage, bytes + 4 * x, vcreate_u8(LoadCoverage8<kRotated>(&mask[last * step], step)), bytes + 4 * last);
             }
         }
-        else if(w >= 4) {
+        else if (w >= 4) {
             const size_t   back = size_t(w - 4);
             const uint64_t m    = uint64_t(LoadCoverage4<kRotated>(mask, step)) | (uint64_t(LoadCoverage4<kRotated>(&mask[back * step], step)) << 32);
             DrawShortRow<kOpaque, kSkip>(color, vcreate_u8(m), bytes, w);
@@ -444,13 +444,13 @@ namespace {
     template <bool kOpaque, bool kSkip, bool kPartial>
     FONTRENDERER_ALWAYS_INLINE void
     DrawBandBlocks(const Color &color, const uint8x8x4_t &coverage, uint8_t *bytes, size_t rowBytes, int32_t firstRow) {
-        if(kPartial == false || firstRow <= 0) {
+        if (kPartial == false || firstRow <= 0) {
             DrawBlock<kOpaque, kSkip>(color, coverage.val[0], bytes);
         }
-        if(kPartial == false || firstRow <= 1) {
+        if (kPartial == false || firstRow <= 1) {
             DrawBlock<kOpaque, kSkip>(color, coverage.val[1], bytes + rowBytes);
         }
-        if(kPartial == false || firstRow <= 2) {
+        if (kPartial == false || firstRow <= 2) {
             DrawBlock<kOpaque, kSkip>(color, coverage.val[2], bytes + 2 * rowBytes);
         }
         DrawBlock<kOpaque, kSkip>(color, coverage.val[3], bytes + 3 * rowBytes);
@@ -461,13 +461,13 @@ namespace {
     FONTRENDERER_ALWAYS_INLINE void
     DrawBandBlocksAndLast(const Color &color, const uint8x8x4_t &coverage, uint8_t *bytes, const uint8x8x4_t &lastCoverage, uint8_t *last,
                           size_t rowBytes, int32_t firstRow) {
-        if(kPartial == false || firstRow <= 0) {
+        if (kPartial == false || firstRow <= 0) {
             DrawBlockAndLast<kOpaque, kSkip>(color, coverage.val[0], bytes, lastCoverage.val[0], last);
         }
-        if(kPartial == false || firstRow <= 1) {
+        if (kPartial == false || firstRow <= 1) {
             DrawBlockAndLast<kOpaque, kSkip>(color, coverage.val[1], bytes + rowBytes, lastCoverage.val[1], last + rowBytes);
         }
-        if(kPartial == false || firstRow <= 2) {
+        if (kPartial == false || firstRow <= 2) {
             DrawBlockAndLast<kOpaque, kSkip>(color, coverage.val[2], bytes + 2 * rowBytes, lastCoverage.val[2], last + 2 * rowBytes);
         }
         DrawBlockAndLast<kOpaque, kSkip>(color, coverage.val[3], bytes + 3 * rowBytes, lastCoverage.val[3], last + 3 * rowBytes);
@@ -478,13 +478,13 @@ namespace {
     FONTRENDERER_ALWAYS_INLINE void
     DrawBandBlocksAndQuads(const Color &color, const uint8x8x4_t &coverage, uint8_t *bytes, const uint8x8x4_t &tailCoverage, uint8_t *tail,
                            size_t rowBytes, int32_t firstRow) {
-        if(kPartial == false || firstRow <= 0) {
+        if (kPartial == false || firstRow <= 0) {
             DrawBlockAndQuad<kOpaque, kSkip>(color, coverage.val[0], bytes, tailCoverage.val[0], tail);
         }
-        if(kPartial == false || firstRow <= 1) {
+        if (kPartial == false || firstRow <= 1) {
             DrawBlockAndQuad<kOpaque, kSkip>(color, coverage.val[1], bytes + rowBytes, tailCoverage.val[1], tail + rowBytes);
         }
-        if(kPartial == false || firstRow <= 2) {
+        if (kPartial == false || firstRow <= 2) {
             DrawBlockAndQuad<kOpaque, kSkip>(color, coverage.val[2], bytes + 2 * rowBytes, tailCoverage.val[2], tail + 2 * rowBytes);
         }
         DrawBlockAndQuad<kOpaque, kSkip>(color, coverage.val[3], bytes + 3 * rowBytes, tailCoverage.val[3], tail + 3 * rowBytes);
@@ -494,13 +494,13 @@ namespace {
     template <bool kOpaque, bool kSkip, bool kPartial>
     FONTRENDERER_ALWAYS_INLINE void
     DrawBandShortRows(const Color &color, const uint8x8x4_t &coverage, uint8_t *bytes, int32_t w, size_t rowBytes, int32_t firstRow) {
-        if(kPartial == false || firstRow <= 0) {
+        if (kPartial == false || firstRow <= 0) {
             DrawShortRow<kOpaque, kSkip>(color, coverage.val[0], bytes, w);
         }
-        if(kPartial == false || firstRow <= 1) {
+        if (kPartial == false || firstRow <= 1) {
             DrawShortRow<kOpaque, kSkip>(color, coverage.val[1], bytes + rowBytes, w);
         }
-        if(kPartial == false || firstRow <= 2) {
+        if (kPartial == false || firstRow <= 2) {
             DrawShortRow<kOpaque, kSkip>(color, coverage.val[2], bytes + 2 * rowBytes, w);
         }
         DrawShortRow<kOpaque, kSkip>(color, coverage.val[3], bytes + 3 * rowBytes, w);
@@ -514,19 +514,19 @@ namespace {
     DrawAlpha8Band(const Color &color, const uint8_t *mask, size_t step, uint32_t *dst, size_t dstStride, int32_t w, int32_t firstRow) {
         uint8_t      *bytes    = reinterpret_cast<uint8_t *>(dst);
         const size_t rowBytes = 4 * dstStride;
-        if(w >= 8) {
+        if (w >= 8) {
             const size_t full = size_t(w) & ~size_t(7);
             const size_t rest = size_t(w) & 7;
             size_t       x    = 0;
-            for(; x + 8 < full; x += 8) {
+            for (; x + 8 < full; x += 8) {
                 DrawBandBlocks<kOpaque, kSkip, kPartial>(color, LoadBandCoverage(&mask[x * step], step), bytes + 4 * x, rowBytes, firstRow);
             }
 
             const uint8x8x4_t coverage = LoadBandCoverage(&mask[x * step], step);
-            if(rest == 0) {
+            if (rest == 0) {
                 DrawBandBlocks<kOpaque, kSkip, kPartial>(color, coverage, bytes + 4 * x, rowBytes, firstRow);
             }
-            else if(rest <= 4) {
+            else if (rest <= 4) {
                 const size_t tail = size_t(w) - 4;
                 DrawBandBlocksAndQuads<kOpaque, kSkip, kPartial>(color, coverage, bytes + 4 * x, LoadBandQuadCoverage(&mask[tail * step], step),
                                                                  bytes + 4 * tail, rowBytes, firstRow);
@@ -552,18 +552,18 @@ namespace {
     DrawAlpha8Rotated(const uint8_t *mask, size_t stepX, size_t stepY, int32_t width, int32_t height,
                       uint32_t *dst, uint32_t dstStride, uint32_t premultiplied) {
         const Color color = MakeColor(premultiplied);
-        if(stepY == 1 && width >= 4 && height >= 4) {
+        if (stepY == 1 && width >= 4 && height >= 4) {
             int32_t y = 0;
-            for(; y + 4 <= height; y += 4) {
+            for (; y + 4 <= height; y += 4) {
                 DrawAlpha8Band<kOpaque, kSkip, false>(color, &mask[size_t(y)], stepX, &dst[size_t(y) * dstStride], dstStride, width, 0);
             }
-            if(y < height) {
+            if (y < height) {
                 const int32_t top = height - 4;
                 DrawAlpha8Band<kOpaque, kSkip, true>(color, &mask[size_t(top)], stepX, &dst[size_t(top) * dstStride], dstStride, width, y - top);
             }
         }
         else {
-            for(int32_t y = 0; y < height; ++y) {
+            for (int32_t y = 0; y < height; ++y) {
                 DrawAlpha8Row<true, kOpaque, kSkip>(color, &mask[size_t(y) * stepY], stepX, &dst[size_t(y) * dstStride], width);
             }
         }
@@ -573,7 +573,7 @@ namespace {
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE void
     DrawAlpha8Rows(const Color &color, const uint8_t *mask, size_t stepY, int32_t width, int32_t height, uint32_t *dst, uint32_t dstStride) {
-        for(int32_t y = 0; y < height; ++y) {
+        for (int32_t y = 0; y < height; ++y) {
             DrawAlpha8Row<false, kOpaque, kSkip>(color, &mask[size_t(y) * stepY], 1, &dst[size_t(y) * dstStride], width);
         }
     }
@@ -585,8 +585,8 @@ namespace {
     DrawAlpha8(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t /*alpha*/) {
         const uint8_t *mask = &texture[offset];
-        if(stepX != 1) {
-            if(UsesShortcuts(width)) {
+        if (stepX != 1) {
+            if (UsesShortcuts(width)) {
                 DrawAlpha8Rotated<kOpaque, true>(mask, stepX, stepY, width, height, dst, dstStride, premultiplied);
             }
             else {
@@ -596,7 +596,7 @@ namespace {
         }
 
         const Color color = MakeColor(premultiplied);
-        if(UsesShortcuts(width)) {
+        if (UsesShortcuts(width)) {
             DrawAlpha8Rows<kOpaque, true>(color, mask, stepY, width, height, dst, dstStride);
         }
         else {
@@ -610,7 +610,7 @@ namespace {
     FONTRENDERER_ALWAYS_INLINE void
     DrawBgraTexel(const Color &color, const uint8_t *texel, uint32_t *dst) {
         const uint32_t t = Load32(texel);
-        if(t >> 24) {
+        if (t >> 24) {
             const uint8x8_t  texels = vreinterpret_u8_u32(vdup_n_u32(t));
             const uint16x8_t source = vmull_u8(texels, color.pair);
             const uint8x8_t  alpha  = vtbl1_u8(kOpaque ? texels : Div255(source), color.spreadAlpha);
@@ -642,12 +642,12 @@ namespace {
     template <bool kOpaque>
     FONTRENDERER_ALWAYS_INLINE bool
     DrawTexelsShortcut(const Color &color, uint64_t anyAlpha, uint64_t allAlpha, const uint8_t *src, uint8_t *bytes) {
-        if(anyAlpha == 0) {
+        if (anyAlpha == 0) {
             return true;
         }
-        if(kOpaque && allAlpha == kAlphaBytes) {
+        if (kOpaque && allAlpha == kAlphaBytes) {
             const uint8x16_t texels = vld1q_u8(src);
-            if(color.white) {
+            if (color.white) {
                 vst1q_u8(bytes, texels);
             }
             else {
@@ -666,10 +666,10 @@ namespace {
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE void
     DrawTexelsRead(const Color &color, const uint8_t *src, uint8x16_t pixels, uint8_t *bytes) {
-        if(kSkip) {
+        if (kSkip) {
             uint64_t texels[2];
             memcpy(texels, src, sizeof(texels));
-            if(DrawTexelsShortcut<kOpaque>(color, (texels[0] | texels[1]) & kAlphaBytes, texels[0] & texels[1] & kAlphaBytes, src, bytes)) {
+            if (DrawTexelsShortcut<kOpaque>(color, (texels[0] | texels[1]) & kAlphaBytes, texels[0] & texels[1] & kAlphaBytes, src, bytes)) {
                 return;
             }
         }
@@ -682,16 +682,16 @@ namespace {
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE void
     DrawTexelPairRead(const Color &color, const uint8_t *srcLo, const uint8_t *srcHi, uint8x16_t loPixels, uint8x16_t hiPixels, uint8_t *lo, uint8_t *hi) {
-        if(kSkip) {
+        if (kSkip) {
             uint64_t texelsLo[2], texelsHi[2];
             memcpy(texelsLo, srcLo, sizeof(texelsLo));
             memcpy(texelsHi, srcHi, sizeof(texelsHi));
             const uint64_t anyAlpha = (texelsLo[0] | texelsLo[1] | texelsHi[0] | texelsHi[1]) & kAlphaBytes;
             const uint64_t allAlpha = texelsLo[0] & texelsLo[1] & texelsHi[0] & texelsHi[1] & kAlphaBytes;
-            if(anyAlpha == 0) {
+            if (anyAlpha == 0) {
                 return;
             }
-            if(kOpaque && allAlpha == kAlphaBytes) {
+            if (kOpaque && allAlpha == kAlphaBytes) {
                 DrawTexelsShortcut<kOpaque>(color, anyAlpha, allAlpha, srcHi, hi);
                 DrawTexelsShortcut<kOpaque>(color, anyAlpha, allAlpha, srcLo, lo);
                 return;
@@ -715,18 +715,18 @@ namespace {
     FONTRENDERER_ALWAYS_INLINE void
     DrawBgraRow(const Color &color, const uint8_t *src, uint32_t *dst, int32_t w) {
         uint8_t *bytes = reinterpret_cast<uint8_t *>(dst);
-        if(w >= 8) {
+        if (w >= 8) {
             const size_t full = size_t(w) & ~size_t(7);
             const size_t rest = size_t(w) & 7;
             size_t       x    = 0;
-            for(; x + 8 < full; x += 8) {
+            for (; x + 8 < full; x += 8) {
                 DrawTexelPair<kOpaque, kSkip>(color, src + 4 * x, src + 4 * x + 16, bytes + 4 * x, bytes + 4 * x + 16);
             }
 
-            if(rest == 0) {
+            if (rest == 0) {
                 DrawTexelPair<kOpaque, kSkip>(color, src + 4 * x, src + 4 * x + 16, bytes + 4 * x, bytes + 4 * x + 16);
             }
-            else if(rest <= 4) {
+            else if (rest <= 4) {
                 const size_t     tail       = 4 * (size_t(w) - 4);
                 const uint8x16_t tailPixels = vld1q_u8(bytes + tail);
                 DrawTexelPair<kOpaque, kSkip>(color, src + 4 * x, src + 4 * x + 16, bytes + 4 * x, bytes + 4 * x + 16);
@@ -740,12 +740,12 @@ namespace {
                 DrawTexelPairRead<kOpaque, kSkip>(color, src + last, src + last + 16, lastLo, lastHi, bytes + last, bytes + last + 16);
             }
         }
-        else if(w >= 4) {
+        else if (w >= 4) {
             const size_t back = 4 * size_t(w - 4);
             DrawTexelPair<kOpaque, kSkip>(color, src, src + back, bytes, bytes + back);
         }
         else {
-            while(w > 0) {
+            while (w > 0) {
                 DrawBgraTexel<kOpaque>(color, src, dst);
                 src += 4;
                 w--;
@@ -760,17 +760,17 @@ namespace {
     FONTRENDERER_ALWAYS_INLINE void
     DrawBgraRows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
                  uint32_t *dst, uint32_t dstStride) {
-        if(stepX != 1) {
-            for(int32_t y = 0; y < height; ++y) {
+        if (stepX != 1) {
+            for (int32_t y = 0; y < height; ++y) {
                 uint32_t *row = &dst[size_t(y) * dstStride];
-                for(int32_t x = 0; x < width; ++x) {
+                for (int32_t x = 0; x < width; ++x) {
                     DrawBgraTexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
                 }
             }
             return;
         }
 
-        for(int32_t y = 0; y < height; ++y) {
+        for (int32_t y = 0; y < height; ++y) {
             DrawBgraRow<kOpaque, kSkip>(color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride], width);
         }
     }
@@ -782,7 +782,7 @@ namespace {
              uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t /*alpha*/) {
         const Color   color = MakeColor(premultiplied);
         const uint8_t *src  = &texture[offset * 4];
-        if(UsesShortcuts(width)) {
+        if (UsesShortcuts(width)) {
             DrawBgraRows<kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
         }
         else {
@@ -795,7 +795,7 @@ namespace {
 //-------------------------------------
 GlyphDraw::DrawGlyphFunction
 GlyphDraw::GetNeonDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
-    if(bytesPerTexel == 1) {
+    if (bytesPerTexel == 1) {
         return opaque ? DrawAlpha8<true> : DrawAlpha8<false>;
     }
 

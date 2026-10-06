@@ -5,11 +5,11 @@
 #include <string.h>
 
 // Returns the failing line, after destroying the font.
-#define CHECK_C(condition) do { if(!(condition)) { result = __LINE__; goto cleanup; } } while(0)
+#define CHECK_C(condition) do { if (!(condition)) { result = __LINE__; goto cleanup; } } while (0)
 
 //-------------------------------------
 int
-fr_test_c_api(const char *font_name, fr_font_backend backend) {
+fr_test_c_api(const char *file_name, fr_font_backend backend) {
     fr_font         *font = NULL;
     fr_rect         box;
     fr_glyph_quad   quads[2];
@@ -20,9 +20,9 @@ fr_test_c_api(const char *font_name, fr_font_backend backend) {
     bool            has_pixels = false;
     int             result     = 0;
 
-    CHECK_C(fr_font_create(font_name, backend, &font) == FR_STATUS_OK);
+    CHECK_C(fr_font_create(file_name, backend, &font) == FR_STATUS_OK);
     CHECK_C(font != NULL);
-    CHECK_C(strcmp(fr_font_get_name(font), font_name) == 0);
+    CHECK_C(strcmp(fr_font_get_file_name(font), file_name) == 0);
     CHECK_C(fr_font_get_texture(font) != NULL);
     CHECK_C(fr_font_get_texture_width(font) == 512);
     CHECK_C(fr_font_get_texture_height(font) == 128);
@@ -68,8 +68,8 @@ fr_test_c_api(const char *font_name, fr_font_backend backend) {
     version = fr_font_get_texture_version(font);
     CHECK_C(fr_font_draw_text(font, "Ag", 24, UINT32_C(0xffffffff), buffer, 64, 8, 8) == FR_STATUS_OK);
     CHECK_C(fr_font_get_texture_version(font) == version);
-    for(i = 0; i < sizeof(buffer) / sizeof(buffer[0]); ++i) {
-        if(buffer[i] != 0) {
+    for (i = 0; i < sizeof(buffer) / sizeof(buffer[0]); ++i) {
+        if (buffer[i] != 0) {
             has_pixels = true;
             break;
         }
@@ -96,4 +96,3 @@ cleanup:
     fr_font_destroy(font);
     return result;
 }
-

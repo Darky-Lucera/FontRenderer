@@ -38,23 +38,23 @@ namespace MindShake {
             };
 
         public:
-            explicit                    FontFT(const char *fontName);
+            explicit                    FontFT(const char *fileName);
 
             // Changing any of these settings discards every rendered glyph, like Reset.
             void                        SetHinting(EHinting hinting);
             EHinting                    GetHinting() const                  { return mHinting;                          }
             // Pixels fully on or off, without the gray levels of FreeType. Normal hinting was designed for it.
-            void                        SetMonochrome(bool set);
-            bool                        GetMonochrome() const               { return mMonochrome;                       }
+            void                        SetMonochrome(bool enabled);
+            bool                        GetMonochrome() const               { return mMonochromeEnabled;                }
             // Thickens thin stems at small sizes. It only works with hinting: Light for TrueType outlines, any for CFF.
-            void                        SetStemDarkening(bool set);
-            bool                        GetStemDarkening() const            { return mStemDarkening;                    }
+            void                        SetStemDarkening(bool enabled);
+            bool                        GetStemDarkening() const            { return mStemDarkeningEnabled;             }
 
         protected:
             int                         GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
 
-            const CodePointData &       GetCodePointData(uint32_t index) override;
-            bool                        RasterizeGlyph(const CodePointData &codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) override;
+            const CodePointData &       GetCodePointData(uint32_t codePoint) override;
+            bool                        RasterizeGlyph(const CodePointData &codePointData, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) override;
 
         protected:
             // Each font has its own library, so fonts can be used from different threads.
@@ -62,9 +62,9 @@ namespace MindShake {
             // Points into mFontFile. Declared after mLibrary, because it has to be destroyed first.
             std::unique_ptr<FT_FaceRec_,    void (*)(FT_FaceRec_ *)>    mFace    { nullptr, nullptr };
 
-            EHinting                mHinting       { EHinting::None };
-            bool                    mMonochrome    {};
-            bool                    mStemDarkening {};
+            EHinting                mHinting              { EHinting::None };
+            bool                    mMonochromeEnabled    {};
+            bool                    mStemDarkeningEnabled {};
     };
 
 } // end of namespace

@@ -25,19 +25,19 @@ namespace {
     MakeTexture(std::mt19937 &rng, uint32_t bytesPerTexel, int32_t texels = kTextureWidth * kTextureHeight) {
         std::vector<uint8_t> texture;
         uint32_t             kind = 0, left = 0;
-        for(int32_t i = 0; i < texels; ++i) {
-            if(left == 0) {
+        for (int32_t i = 0; i < texels; ++i) {
+            if (left == 0) {
                 kind = rng() % 3;
                 left = 1 + rng() % 9;
             }
             --left;
 
             const uint32_t alpha = (kind == 0) ? 0 : (kind == 1) ? 255 : 1 + rng() % 254;
-            if(bytesPerTexel == 1) {
+            if (bytesPerTexel == 1) {
                 texture.push_back(uint8_t(alpha));
             }
             else {
-                for(int channel = 0; channel < 3; ++channel) {
+                for (int channel = 0; channel < 3; ++channel) {
                     texture.push_back(uint8_t(rng() % (alpha + 1)));
                 }
                 texture.push_back(uint8_t(alpha));
@@ -52,10 +52,10 @@ namespace {
     std::vector<uint32_t>
     MakeDestination(std::mt19937 &rng, int32_t width = kWidth, int32_t height = kHeight) {
         std::vector<uint32_t> pixels;
-        for(int32_t i = 0; i < width * height; ++i) {
+        for (int32_t i = 0; i < width * height; ++i) {
             const uint32_t alpha = (i % width < width / 2) ? 255 : rng() % 256;
             uint32_t       pixel = alpha << 24;
-            for(uint32_t shift = 0; shift < 24; shift += 8) {
+            for (uint32_t shift = 0; shift < 24; shift += 8) {
                 pixel |= (rng() % (alpha + 1)) << shift;
             }
             pixels.push_back(pixel);
@@ -70,13 +70,13 @@ namespace {
     uint32_t
     BlendReference(const uint8_t *texel, uint32_t bytesPerTexel, uint32_t color, uint32_t pixel) {
         const uint32_t texelAlpha = texel[bytesPerTexel - 1];
-        if(texelAlpha == 0) {
+        if (texelAlpha == 0) {
             return pixel;
         }
 
         const uint32_t alpha  = (texelAlpha * (color >> 24) + 127) / 255;
         uint32_t       result = 0;
-        for(uint32_t channel = 0; channel < 4; ++channel) {
+        for (uint32_t channel = 0; channel < 4; ++channel) {
             const uint32_t shift  = channel * 8;
             const uint32_t source = ((bytesPerTexel == 1) ? texelAlpha : texel[channel]) * ((color >> shift) & 0xff);
             result |= ((source + ((pixel >> shift) & 0xff) * (255 - alpha) + 127) / 255) << shift;
@@ -92,17 +92,17 @@ TEST_CASE("The functions that draw a glyph leave the pixels of the blend, the sa
     const int32_t kTextureX = 3, kTextureY = 2, kPosX = 5, kPosY = 4;
 
     std::mt19937 rng(11);
-    for(uint32_t bytesPerTexel : { 1u, 4u }) {
+    for (uint32_t bytesPerTexel : { 1u, 4u }) {
         const std::vector<uint8_t>  texture     = MakeTexture(rng, bytesPerTexel);
         const std::vector<uint32_t> destination = MakeDestination(rng);
 
         // An alpha of 255 takes the functions for an opaque text. White has its own shortcut over a color texture.
-        for(uint32_t color : { 0xffffffffu, 0xff40c080u, 0x80ff8040u, 0x01ffffffu, 0x00ffffffu }) {
+        for (uint32_t color : { 0xffffffffu, 0xff40c080u, 0x80ff8040u, 0x01ffffffu, 0x00ffffffu }) {
             const uint32_t premultiplied = GlyphDraw::PremultiplyColor(color);
             const uint32_t alpha         = color >> 24;
             const bool     opaque        = alpha == 255;
 
-            for(bool rotated : { false, true }) {
+            for (bool rotated : { false, true }) {
                 // A rotated glyph is stored transposed: the pixel (x, y) is the texel (x0 + y, y0 + x).
                 const size_t stepX  = rotated ? size_t(kTextureWidth) : 1;
                 const size_t stepY  = rotated ? 1 : size_t(kTextureWidth);
@@ -110,8 +110,8 @@ TEST_CASE("The functions that draw a glyph leave the pixels of the blend, the sa
 
                 // A clipped glyph can get a width or a height of 0 or less, which must draw nothing. The SIMD code draws a
                 // rotated glyph 4 rows at a time, and its 1 to 3 last rows with a band that overlaps the one above.
-                for(int32_t width = -3; width <= kMaxGlyphWidth; ++width) {
-                    for(int32_t height : { -2, 0, 1, 3, 4, 5, 7, 8, 9 }) {
+                for (int32_t width = -3; width <= kMaxGlyphWidth; ++width) {
+                    for (int32_t height : { -2, 0, 1, 3, 4, 5, 7, 8, 9 }) {
                         CAPTURE(bytesPerTexel);
                         CAPTURE(color);
                         CAPTURE(rotated);
@@ -119,8 +119,8 @@ TEST_CASE("The functions that draw a glyph leave the pixels of the blend, the sa
                         CAPTURE(height);
 
                         std::vector<uint32_t> expected = destination;
-                        for(int32_t y = 0; y < height; ++y) {
-                            for(int32_t x = 0; x < width; ++x) {
+                        for (int32_t y = 0; y < height; ++y) {
+                            for (int32_t x = 0; x < width; ++x) {
                                 const uint8_t *texel = &texture[(offset + size_t(y) * stepY + size_t(x) * stepX) * bytesPerTexel];
                                 uint32_t      &pixel = expected[size_t(kPosY + y) * kWidth + size_t(kPosX + x)];
                                 pixel = BlendReference(texel, bytesPerTexel, premultiplied, pixel);
@@ -140,7 +140,7 @@ TEST_CASE("The functions that draw a glyph leave the pixels of the blend, the sa
                         CHECK(draw(GlyphDraw::GetSse2DrawGlyphFunction(bytesPerTexel, opaque)) == expected);
 #endif
 #if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
-                        if(CpuX86::HasX64v2()) {
+                        if (CpuX86::HasX64v2()) {
                             CHECK(draw(GlyphDraw::GetX64v2DrawGlyphFunction(bytesPerTexel, opaque)) == expected);
                         }
 #endif
@@ -166,9 +166,9 @@ TEST_CASE("The functions that draw a glyph only read and write the texels and th
     const uint32_t kColors[] = { 0xffffffffu, 0xff40c080u, 0x80ff8040u, 0x01ffffffu, 0x00ffffffu };
 
     std::mt19937 rng(29);
-    for(uint32_t bytesPerTexel : { 1u, 4u }) {
+    for (uint32_t bytesPerTexel : { 1u, 4u }) {
         const std::vector<uint8_t> texture = MakeTexture(rng, bytesPerTexel, kSide * kSide);
-        for(int32_t i = 0; i < 300; ++i) {
+        for (int32_t i = 0; i < 300; ++i) {
             const bool     rotated       = rng() % 2 == 0;
             const int32_t  width         = int32_t(rng() % 72) - 2;
             const int32_t  height        = int32_t(rng() % 62) - 2;
@@ -191,7 +191,7 @@ TEST_CASE("The functions that draw a glyph only read and write the texels and th
             const size_t  last    = empty ? offset : offset + size_t(height - 1) * stepY + size_t(width - 1) * stepX;
 
             std::vector<uint8_t> glyphTexels;
-            if(empty == false) {
+            if (empty == false) {
                 glyphTexels.assign(texture.begin() + std::ptrdiff_t(offset * bytesPerTexel), texture.begin() + std::ptrdiff_t((last + 1) * bytesPerTexel));
             }
 
@@ -200,8 +200,8 @@ TEST_CASE("The functions that draw a glyph only read and write the texels and th
             const std::vector<uint32_t> destination = MakeDestination(rng, int32_t(pixelCount), 1);
 
             std::vector<uint32_t> expected = destination;
-            for(int32_t y = 0; y < height; ++y) {
-                for(int32_t x = 0; x < width; ++x) {
+            for (int32_t y = 0; y < height; ++y) {
+                for (int32_t x = 0; x < width; ++x) {
                     const uint8_t *texel = &glyphTexels[(size_t(y) * stepY + size_t(x) * stepX) * bytesPerTexel];
                     uint32_t      &pixel = expected[size_t(y) * dstStride + size_t(x)];
                     pixel = BlendReference(texel, bytesPerTexel, premultiplied, pixel);
@@ -222,7 +222,7 @@ TEST_CASE("The functions that draw a glyph only read and write the texels and th
             CHECK(draw(GlyphDraw::GetSse2DrawGlyphFunction(bytesPerTexel, false)) == expected);
 #endif
 #if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
-            if(CpuX86::HasX64v2()) {
+            if (CpuX86::HasX64v2()) {
                 CHECK(draw(GlyphDraw::GetX64v2DrawGlyphFunction(bytesPerTexel, opaque)) == expected);
                 CHECK(draw(GlyphDraw::GetX64v2DrawGlyphFunction(bytesPerTexel, false)) == expected);
             }
@@ -238,8 +238,8 @@ TEST_CASE("The functions that draw a glyph only read and write the texels and th
 #if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
 //-------------------------------------
 TEST_CASE("GetDrawGlyphFunction picks the copy for x86-64-v2 only when the processor can run it") {
-    for(uint32_t bytesPerTexel : { 1u, 4u }) {
-        for(bool opaque : { false, true }) {
+    for (uint32_t bytesPerTexel : { 1u, 4u }) {
+        for (bool opaque : { false, true }) {
             CAPTURE(bytesPerTexel);
             CAPTURE(opaque);
 #if defined(FONTRENDERER_X86_64_V2)

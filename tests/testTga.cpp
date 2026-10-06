@@ -33,7 +33,7 @@ namespace {
         uint32_t  width, height, channels;
         ETgaAlpha readAlpha;
         const bool read = ReadTga(file.data(), file.size(), pixels, width, height, channels, readAlpha);
-        if(alpha != nullptr) {
+        if (alpha != nullptr) {
             *alpha = readAlpha;
         }
         return read;
@@ -64,12 +64,12 @@ namespace {
         file[offset + 1]   = uint8_t(kExtensionSize >> 8);
         file[offset + 494] = attributesType;
 
-        for(int shift = 0; shift < 32; shift += 8) {
+        for (int shift = 0; shift < 32; shift += 8) {
             file.push_back(uint8_t(offset >> shift));
         }
         file.insert(file.end(), 4, 0);                  // No developer area
-        const char signature[] = "TRUEVISION-XFILE.";
-        file.insert(file.end(), signature, signature + sizeof(signature));
+        const char kSignature[] = "TRUEVISION-XFILE.";
+        file.insert(file.end(), kSignature, kSignature + sizeof(kSignature));
         return file;
     }
 
@@ -85,17 +85,17 @@ TEST_CASE("TGA keeps the pixels it writes") {
     std::mt19937         rng(3);
     std::vector<uint8_t> image(kStride * kHeight);
     std::vector<uint8_t> expected;
-    for(uint32_t y = 0; y < kHeight; ++y) {
-        for(uint32_t x = 0; x < kStride; ++x) {
+    for (uint32_t y = 0; y < kHeight; ++y) {
+        for (uint32_t x = 0; x < kStride; ++x) {
             const bool noise = (x / 40 + y) % 3 == 0;
             image[y * kStride + x] = noise ? uint8_t(rng()) : uint8_t(y * 10);
-            if(x < kWidth) {
+            if (x < kWidth) {
                 expected.push_back(image[y * kStride + x]);
             }
         }
     }
 
-    for(bool compress : { false, true }) {
+    for (bool compress : { false, true }) {
         CAPTURE(compress);
         const std::vector<uint8_t> file = WriteAndRead(image.data(), kWidth, kHeight, kStride, compress);
 
@@ -107,7 +107,7 @@ TEST_CASE("TGA keeps the pixels it writes") {
         CHECK(height   == kHeight);
         CHECK(channels == 1);
         CHECK(pixels   == expected);
-        if(compress) {
+        if (compress) {
             CHECK(file.size() < 18 + expected.size());
         }
         else {
@@ -122,18 +122,18 @@ TEST_CASE("TGA keeps the pixels of a 32-bit image") {
     std::mt19937         rng(5);
     std::vector<uint8_t> image(kStride * kHeight);
     std::vector<uint8_t> expected;
-    for(uint32_t y = 0; y < kHeight; ++y) {
-        for(uint32_t x = 0; x < kStride; ++x) {
+    for (uint32_t y = 0; y < kHeight; ++y) {
+        for (uint32_t x = 0; x < kStride; ++x) {
             // Runs of equal pixels, and pixels that change at every step.
             const bool noise = (x / 60 + y) % 2 == 0;
             image[y * kStride + x] = noise ? uint8_t(rng()) : uint8_t(y * 10 + x % 4);
-            if(x < kWidth * 4) {
+            if (x < kWidth * 4) {
                 expected.push_back(image[y * kStride + x]);
             }
         }
     }
 
-    for(bool compress : { false, true }) {
+    for (bool compress : { false, true }) {
         CAPTURE(compress);
         const std::vector<uint8_t> file = WriteAndRead(image.data(), kWidth, kHeight, kStride, compress, 4);
         CHECK(file[2]  == (compress ? 10 : 2));
@@ -154,31 +154,31 @@ TEST_CASE("TGA keeps the pixels of a 32-bit image") {
 
 //-------------------------------------
 TEST_CASE("TGA marks a premultiplied alpha in the extension area of TGA 2.0") {
-    const uint8_t image[] = { 20, 40, 60, 80,  0, 0, 0, 0 };
+    const uint8_t kImage[] = { 20, 40, 60, 80,  0, 0, 0, 0 };
 
     // A straight alpha needs no extension area: the alpha bits of the header already say it.
-    const std::vector<uint8_t> straight = WriteAndRead(image, 2, 1, 8, false, 4);
-    CHECK(straight.size() == 18 + sizeof(image));
+    const std::vector<uint8_t> straight = WriteAndRead(kImage, 2, 1, 8, false, 4);
+    CHECK(straight.size() == 18 + sizeof(kImage));
 
-    REQUIRE(WriteTga(kTgaPath, image, 2, 1, 8, 4, false, ETgaAlpha::Premultiplied));
+    REQUIRE(WriteTga(kTgaPath, kImage, 2, 1, 8, 4, false, ETgaAlpha::Premultiplied));
     const std::vector<uint8_t> premultiplied = ReadFile(kTgaPath);
-    CHECK(premultiplied.size() == 18 + sizeof(image) + 495 + 26);
+    CHECK(premultiplied.size() == 18 + sizeof(kImage) + 495 + 26);
 
     std::vector<uint8_t> pixels;
     ETgaAlpha            alpha = ETgaAlpha::Straight;
     REQUIRE(Read(premultiplied, pixels, &alpha));
     CHECK(alpha  == ETgaAlpha::Premultiplied);
-    CHECK(pixels == std::vector<uint8_t>(image, image + sizeof(image)));
+    CHECK(pixels == std::vector<uint8_t>(kImage, kImage + sizeof(kImage)));
 
     // Gray has no alpha to mark.
-    REQUIRE(WriteTga(kTgaPath, image, 8, 1, 8, 1, false, ETgaAlpha::Premultiplied));
-    CHECK(ReadFile(kTgaPath).size() == 18 + sizeof(image));
+    REQUIRE(WriteTga(kTgaPath, kImage, 8, 1, 8, 1, false, ETgaAlpha::Premultiplied));
+    CHECK(ReadFile(kTgaPath).size() == 18 + sizeof(kImage));
 }
 
 //-------------------------------------
 TEST_CASE("TGA stores the color channels as they are in memory: blue, green, red and alpha") {
-    const uint8_t              image[] = { 1, 2, 3, 4 };
-    const std::vector<uint8_t> file    = WriteAndRead(image, 1, 1, 4, false, 4);
+    const uint8_t              kImage[] = { 1, 2, 3, 4 };
+    const std::vector<uint8_t> file     = WriteAndRead(kImage, 1, 1, 4, false, 4);
 
     CHECK(std::vector<uint8_t>(file.begin() + 18, file.end()) == std::vector<uint8_t> { 1, 2, 3, 4 });
 }
@@ -243,15 +243,15 @@ TEST_CASE("TGA reads what the extension area of TGA 2.0 says about the alpha") {
 
 //-------------------------------------
 TEST_CASE("TGA compresses runs of two or more equal pixels") {
-    const uint8_t              image[] = { 5, 5, 5, 1, 2, 3, 3 };
-    const std::vector<uint8_t> file    = WriteAndRead(image, 7, 1, 7, true);
+    const uint8_t              kImage[] = { 5, 5, 5, 1, 2, 3, 3 };
+    const std::vector<uint8_t> file     = WriteAndRead(kImage, 7, 1, 7, true);
 
     const std::vector<uint8_t> packets(file.begin() + 18, file.end());
     CHECK(packets == std::vector<uint8_t> { 0x82, 5, 0x01, 1, 2, 0x81, 3 });
 
     // Two pixels that only differ in one channel are not a run.
-    const uint8_t              color[] = { 1, 2, 3, 4,  1, 2, 3, 4,  1, 2, 3, 5 };
-    const std::vector<uint8_t> colorFile = WriteAndRead(color, 3, 1, 12, true, 4);
+    const uint8_t              kColor[] = { 1, 2, 3, 4,  1, 2, 3, 4,  1, 2, 3, 5 };
+    const std::vector<uint8_t> colorFile = WriteAndRead(kColor, 3, 1, 12, true, 4);
 
     const std::vector<uint8_t> colorPackets(colorFile.begin() + 18, colorFile.end());
     CHECK(colorPackets == std::vector<uint8_t> { 0x81, 1, 2, 3, 4, 0x00, 1, 2, 3, 5 });
@@ -286,10 +286,10 @@ TEST_CASE("TGA reads packets that cross rows") {
 
 //-------------------------------------
 TEST_CASE("TGA skips the image ID and ignores what follows the pixels") {
-    const uint8_t image[] = { 7, 8 };
-    for(bool compress : { false, true }) {
+    const uint8_t kImage[] = { 7, 8 };
+    for (bool compress : { false, true }) {
         CAPTURE(compress);
-        std::vector<uint8_t> file = WriteAndRead(image, 2, 1, 2, compress);
+        std::vector<uint8_t> file = WriteAndRead(kImage, 2, 1, 2, compress);
         file[0] = 3;
         file.insert(file.begin() + 18, { 'I', 'D', '!' });
         file.insert(file.end(), { 'T', 'R', 'U', 'E', 'V', 'I', 'S', 'I', 'O', 'N' });
@@ -302,14 +302,14 @@ TEST_CASE("TGA skips the image ID and ignores what follows the pixels") {
 
 //-------------------------------------
 TEST_CASE("TGA rejects the images it cannot read") {
-    const uint8_t              image[] = { 1, 2, 3, 4 };
-    const std::vector<uint8_t> valid   = WriteAndRead(image, 2, 2, 2, false);
+    const uint8_t              kImage[] = { 1, 2, 3, 4 };
+    const std::vector<uint8_t> valid    = WriteAndRead(kImage, 2, 2, 2, false);
 
     struct Change {
         size_t  offset;
         uint8_t value;
     };
-    const Change changes[] = {
+    const Change kChanges[] = {
         {  1, 1    },   // Color map
         {  2, 1    },   // Image with a color map
         {  2, 2    },   // Color with 8 bits per pixel
@@ -322,7 +322,7 @@ TEST_CASE("TGA rejects the images it cannot read") {
         { 14, 0    },   // Height 0
         {  0, 200  },   // Image ID longer than the file
     };
-    for(const Change &change : changes) {
+    for (const Change &change : kChanges) {
         CAPTURE(change.offset);
         std::vector<uint8_t> file = valid;
         file[change.offset] = change.value;
@@ -372,15 +372,15 @@ TEST_CASE("TGA rejects broken RLE packets") {
 
 //-------------------------------------
 TEST_CASE("TGA rejects the images it cannot write") {
-    const uint8_t image[] = { 1, 2, 3, 4 };
+    const uint8_t kImage[] = { 1, 2, 3, 4 };
 
-    CHECK_FALSE(WriteTga(kTgaPath, image, 0, 1, 1, 1, false));
-    CHECK_FALSE(WriteTga(kTgaPath, image, 1, 0, 1, 1, false));
-    CHECK_FALSE(WriteTga(kTgaPath, image, 2, 1, 1, 1, false));
-    CHECK_FALSE(WriteTga(kTgaPath, image, 1, 1, 3, 4, false));
-    CHECK_FALSE(WriteTga(kTgaPath, image, 1, 1, 4, 3, false));
-    CHECK_FALSE(WriteTga(kTgaPath, image, 1, 1, 4, 0, false));
+    CHECK_FALSE(WriteTga(kTgaPath, kImage, 0, 1, 1, 1, false));
+    CHECK_FALSE(WriteTga(kTgaPath, kImage, 1, 0, 1, 1, false));
+    CHECK_FALSE(WriteTga(kTgaPath, kImage, 2, 1, 1, 1, false));
+    CHECK_FALSE(WriteTga(kTgaPath, kImage, 1, 1, 3, 4, false));
+    CHECK_FALSE(WriteTga(kTgaPath, kImage, 1, 1, 4, 3, false));
+    CHECK_FALSE(WriteTga(kTgaPath, kImage, 1, 1, 4, 0, false));
     CHECK_FALSE(WriteTga(kTgaPath, nullptr, 1, 1, 1, 1, false));
-    CHECK_FALSE(WriteTga(nullptr, image, 1, 1, 1, 1, false));
-    CHECK_FALSE(WriteTga(FONT_RENDERER_TEST_OUTPUT "missing/test.tga", image, 1, 1, 1, 1, true));
+    CHECK_FALSE(WriteTga(nullptr, kImage, 1, 1, 1, 1, false));
+    CHECK_FALSE(WriteTga(FONT_RENDERER_TEST_OUTPUT "missing/test.tga", kImage, 1, 1, 1, 1, true));
 }

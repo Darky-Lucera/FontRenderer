@@ -43,16 +43,16 @@ MappedFile::Open(const char *fileName) {
     Close();
 
     HANDLE file = CreateFileA(fileName, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if(file == INVALID_HANDLE_VALUE) {
+    if (file == INVALID_HANDLE_VALUE) {
         return EError::CannotOpen;
     }
 
     LARGE_INTEGER size;
-    if(GetFileSizeEx(file, &size) == 0 || size.QuadPart <= 0) {
+    if (GetFileSizeEx(file, &size) == 0 || size.QuadPart <= 0) {
         CloseHandle(file);
         return EError::CannotRead;
     }
-    if(uint64_t(size.QuadPart) > SIZE_MAX) {
+    if (uint64_t(size.QuadPart) > SIZE_MAX) {
         CloseHandle(file);
         return EError::OutOfMemory;
     }
@@ -60,12 +60,12 @@ MappedFile::Open(const char *fileName) {
     // The mapping keeps its own reference to the file.
     HANDLE mapping = CreateFileMappingA(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
     CloseHandle(file);
-    if(mapping == nullptr) {
+    if (mapping == nullptr) {
         return IsOutOfMemory(GetLastError()) ? EError::OutOfMemory : EError::CannotRead;
     }
 
     const void *view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
-    if(view == nullptr) {
+    if (view == nullptr) {
         const DWORD error = GetLastError();
         CloseHandle(mapping);
         return IsOutOfMemory(error) ? EError::OutOfMemory : EError::CannotRead;
@@ -81,10 +81,10 @@ MappedFile::Open(const char *fileName) {
 //-------------------------------------
 void
 MappedFile::Close() {
-    if(mData != nullptr) {
+    if (mData != nullptr) {
         UnmapViewOfFile(mData);
     }
-    if(mHandle != nullptr) {
+    if (mHandle != nullptr) {
         CloseHandle(mHandle);
     }
 
@@ -101,27 +101,27 @@ MappedFile::Open(const char *fileName) {
     Close();
 
     struct stat info;
-    if(stat(fileName, &info) != 0 || S_ISREG(info.st_mode) == false) {
+    if (stat(fileName, &info) != 0 || S_ISREG(info.st_mode) == false) {
         return EError::CannotOpen;
     }
-    if(info.st_size <= 0) {
+    if (info.st_size <= 0) {
         return EError::CannotRead;
     }
 
     FILE *file = fopen(fileName, "rb");
-    if(file == nullptr) {
+    if (file == nullptr) {
         return EError::CannotOpen;
     }
 
     uint8_t *data = new (std::nothrow) uint8_t[size_t(info.st_size)];
-    if(data == nullptr) {
+    if (data == nullptr) {
         fclose(file);
         return EError::OutOfMemory;
     }
 
     const size_t read = fread(data, size_t(info.st_size), 1, file);
     fclose(file);
-    if(read != 1) {
+    if (read != 1) {
         delete[] data;
         return EError::CannotRead;
     }
@@ -149,21 +149,21 @@ MappedFile::Open(const char *fileName) {
     Close();
 
     const int file = open(fileName, O_RDONLY);
-    if(file < 0) {
+    if (file < 0) {
         return EError::CannotOpen;
     }
 
     // Unlike Windows, open() accepts a directory, so reject it here too.
     struct stat info;
-    if(fstat(file, &info) != 0 || S_ISREG(info.st_mode) == false) {
+    if (fstat(file, &info) != 0 || S_ISREG(info.st_mode) == false) {
         close(file);
         return EError::CannotOpen;
     }
-    if(info.st_size <= 0) {
+    if (info.st_size <= 0) {
         close(file);
         return EError::CannotRead;
     }
-    if(uint64_t(info.st_size) > SIZE_MAX) {
+    if (uint64_t(info.st_size) > SIZE_MAX) {
         close(file);
         return EError::OutOfMemory;
     }
@@ -172,7 +172,7 @@ MappedFile::Open(const char *fileName) {
     void *data = mmap(nullptr, size_t(info.st_size), PROT_READ, MAP_PRIVATE, file, 0);
     const int error = errno;
     close(file);
-    if(data == MAP_FAILED) {
+    if (data == MAP_FAILED) {
         return (error == ENOMEM) ? EError::OutOfMemory : EError::CannotRead;
     }
 
@@ -185,7 +185,7 @@ MappedFile::Open(const char *fileName) {
 //-------------------------------------
 void
 MappedFile::Close() {
-    if(mData != nullptr) {
+    if (mData != nullptr) {
         munmap(const_cast<uint8_t *>(mData), mSize);
     }
 

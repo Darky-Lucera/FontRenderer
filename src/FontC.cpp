@@ -79,7 +79,7 @@ namespace {
     ToStatus(MindShake::FontBase::EStatus status) {
         using EStatus = MindShake::FontBase::EStatus;
 
-        switch(status) {
+        switch (status) {
             case EStatus::Ok:
                 return FR_STATUS_OK;
 
@@ -113,7 +113,7 @@ namespace {
     template <class TFunction>
     fr_status
     Invoke(const fr_font *font, TFunction function) noexcept {
-        if(font == nullptr || font->value == nullptr) {
+        if (font == nullptr || font->value == nullptr) {
             return FR_STATUS_INVALID_ARGUMENT;
         }
 
@@ -135,10 +135,10 @@ namespace {
     template <class TFunction>
     fr_status
     InvokeRasterizer(const fr_font *font, TFunction function) noexcept {
-        if(font == nullptr || font->value == nullptr) {
+        if (font == nullptr || font->value == nullptr) {
             return FR_STATUS_INVALID_ARGUMENT;
         }
-        if(font->rasterizer == nullptr) {
+        if (font->rasterizer == nullptr) {
             return FR_STATUS_INVALID_BACKEND;
         }
 
@@ -165,7 +165,7 @@ namespace {
             std::unique_ptr<MindShake::FontBaked> value = create();
 
             const fr_status status = ToStatus(value->GetStatus());
-            if(status != FR_STATUS_OK) {
+            if (status != FR_STATUS_OK) {
                 return status;
             }
 
@@ -194,10 +194,10 @@ namespace {
     template <class TFunction>
     fr_status
     InvokeFreeType(fr_font *font, TFunction function) noexcept {
-        if(font == nullptr || font->value == nullptr) {
+        if (font == nullptr || font->value == nullptr) {
             return FR_STATUS_INVALID_ARGUMENT;
         }
-        if(font->freeType == nullptr) {
+        if (font->freeType == nullptr) {
             return FR_STATUS_INVALID_BACKEND;
         }
 
@@ -217,13 +217,13 @@ extern "C" {
 
 //-------------------------------------
 fr_status
-fr_font_create(const char *font_name, fr_font_backend backend, fr_font **out_font) {
-    if(out_font == nullptr) {
+fr_font_create(const char *file_name, fr_font_backend backend, fr_font **out_font) {
+    if (out_font == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
     *out_font = nullptr;
 
-    if(font_name == nullptr) {
+    if (file_name == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
@@ -233,22 +233,22 @@ fr_font_create(const char *font_name, fr_font_backend backend, fr_font **out_fon
 #if defined(FONTRENDERER_USE_FREETYPE)
         MindShake::FontFT                *freeType = nullptr;
 #endif
-        switch(backend) {
+        switch (backend) {
 #if defined(FONTRENDERER_USE_STB)
             case FR_FONT_BACKEND_STB:
-                value = std::make_unique<MindShake::FontSTB>(font_name);
+                value = std::make_unique<MindShake::FontSTB>(file_name);
                 break;
 #endif
 
 #if defined(FONTRENDERER_USE_LIBSCHRIFT)
             case FR_FONT_BACKEND_SFT:
-                value = std::make_unique<MindShake::FontSFT>(font_name);
+                value = std::make_unique<MindShake::FontSFT>(file_name);
                 break;
 #endif
 
 #if defined(FONTRENDERER_USE_FREETYPE)
             case FR_FONT_BACKEND_FT: {
-                auto font = std::make_unique<MindShake::FontFT>(font_name);
+                auto font = std::make_unique<MindShake::FontFT>(file_name);
                 freeType  = font.get();
                 value     = std::move(font);
                 break;
@@ -260,7 +260,7 @@ fr_font_create(const char *font_name, fr_font_backend backend, fr_font **out_fon
         }
 
         const fr_status status = ToStatus(value->GetStatus());
-        if(status != FR_STATUS_OK) {
+        if (status != FR_STATUS_OK) {
             return status;
         }
 
@@ -288,12 +288,12 @@ fr_font_create(const char *font_name, fr_font_backend backend, fr_font **out_fon
 //-------------------------------------
 fr_status
 fr_font_create_baked(const char *metrics_file, const char *texture_file, fr_font **out_font) {
-    if(out_font == nullptr) {
+    if (out_font == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
     *out_font = nullptr;
 
-    if(metrics_file == nullptr || texture_file == nullptr) {
+    if (metrics_file == nullptr || texture_file == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
@@ -308,13 +308,13 @@ fr_font_create_baked(const char *metrics_file, const char *texture_file, fr_font
 fr_status
 fr_font_create_baked_with_texture(const char *metrics_file, const uint8_t *texture, uint32_t width, uint32_t height,
                                   fr_font_texture_format format, fr_font **out_font) {
-    if(out_font == nullptr) {
+    if (out_font == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
     *out_font = nullptr;
 
     MindShake::FontBase::ETextureFormat value;
-    switch(format) {
+    switch (format) {
         case FR_FONT_TEXTURE_FORMAT_ALPHA8:
             value = MindShake::FontBase::ETextureFormat::Alpha8;
             break;
@@ -331,7 +331,7 @@ fr_font_create_baked_with_texture(const char *metrics_file, const uint8_t *textu
             return FR_STATUS_INVALID_ARGUMENT;
     }
 
-    if(metrics_file == nullptr) {
+    if (metrics_file == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
@@ -361,13 +361,13 @@ fr_font_reset(fr_font *font) {
 //-------------------------------------
 fr_status
 fr_font_preload(fr_font *font, const char *utf8, uint8_t text_height) {
-    if(utf8 == nullptr) {
+    if (utf8 == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
     bool            allFit = true;
     const fr_status status = InvokeRasterizer(font, [&](auto &value) { allFit = value.Preload(utf8, text_height); });
-    if(status != FR_STATUS_OK) {
+    if (status != FR_STATUS_OK) {
         return status;
     }
 
@@ -383,13 +383,13 @@ fr_font_load_all_kerning_pairs(fr_font *font) {
 //-------------------------------------
 fr_status
 fr_font_save_baked(const fr_font *font, const char *metrics_file, const char *texture_file) {
-    if(metrics_file == nullptr || texture_file == nullptr) {
+    if (metrics_file == nullptr || texture_file == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
     MindShake::FontBase::EStatus saved  = MindShake::FontBase::EStatus::Ok;
     const fr_status              status = InvokeRasterizer(font, [&](auto &value) { saved = value.SaveBaked(metrics_file, texture_file); });
-    if(status != FR_STATUS_OK) {
+    if (status != FR_STATUS_OK) {
         return status;
     }
 
@@ -398,8 +398,8 @@ fr_font_save_baked(const fr_font *font, const char *metrics_file, const char *te
 
 //-------------------------------------
 const char *
-fr_font_get_name(const fr_font *font) {
-    return (font != nullptr && font->value != nullptr) ? font->value->GetFontName().c_str() : nullptr;
+fr_font_get_file_name(const fr_font *font) {
+    return (font != nullptr && font->value != nullptr) ? font->value->GetFileName().c_str() : nullptr;
 }
 
 //-------------------------------------
@@ -411,11 +411,11 @@ fr_font_get_texture(const fr_font *font) {
 //-------------------------------------
 fr_font_texture_format
 fr_font_get_texture_format(const fr_font *font) {
-    if(font == nullptr || font->value == nullptr) {
+    if (font == nullptr || font->value == nullptr) {
         return FR_FONT_TEXTURE_FORMAT_INVALID;
     }
 
-    switch(font->value->GetTextureFormat()) {
+    switch (font->value->GetTextureFormat()) {
         case MindShake::FontBase::ETextureFormat::Alpha8:
             return FR_FONT_TEXTURE_FORMAT_ALPHA8;
 
@@ -463,7 +463,7 @@ fr_font_get_texture_version(const fr_font *font) {
 fr_status
 fr_font_set_texture_growth(fr_font *font, fr_font_texture_growth growth) {
     MindShake::Font::ETextureGrowth value;
-    switch(growth) {
+    switch (growth) {
         case FR_FONT_TEXTURE_GROWTH_HEIGHT:
             value = MindShake::Font::ETextureGrowth::Height;
             break;
@@ -487,11 +487,11 @@ fr_font_set_texture_growth(fr_font *font, fr_font_texture_growth growth) {
 fr_font_texture_growth
 fr_font_get_texture_growth(const fr_font *font) {
     const MindShake::Font *rasterizer = GetRasterizer(font);
-    if(rasterizer == nullptr) {
+    if (rasterizer == nullptr) {
         return FR_FONT_TEXTURE_GROWTH_INVALID;
     }
 
-    switch(rasterizer->GetTextureGrowth()) {
+    switch (rasterizer->GetTextureGrowth()) {
         case MindShake::Font::ETextureGrowth::Height:
             return FR_FONT_TEXTURE_GROWTH_HEIGHT;
 
@@ -509,7 +509,7 @@ fr_font_get_texture_growth(const fr_font *font) {
 fr_status
 fr_font_set_size_mode(fr_font *font, fr_font_size_mode mode) {
     MindShake::Font::ESizeMode value;
-    switch(mode) {
+    switch (mode) {
         case FR_FONT_SIZE_MODE_LINE_HEIGHT:
             value = MindShake::Font::ESizeMode::LineHeight;
             break;
@@ -529,11 +529,11 @@ fr_font_set_size_mode(fr_font *font, fr_font_size_mode mode) {
 fr_font_size_mode
 fr_font_get_size_mode(const fr_font *font) {
     const MindShake::Font *rasterizer = GetRasterizer(font);
-    if(rasterizer == nullptr) {
+    if (rasterizer == nullptr) {
         return FR_FONT_SIZE_MODE_INVALID;
     }
 
-    switch(rasterizer->GetSizeMode()) {
+    switch (rasterizer->GetSizeMode()) {
         case MindShake::Font::ESizeMode::LineHeight:
             return FR_FONT_SIZE_MODE_LINE_HEIGHT;
 
@@ -549,7 +549,7 @@ fr_status
 fr_font_set_glyph_spacing(fr_font *font, uint32_t spacing) {
     bool            accepted = false;
     const fr_status status   = InvokeRasterizer(font, [&](auto &value) { accepted = value.SetGlyphSpacing(spacing); });
-    if(status != FR_STATUS_OK) {
+    if (status != FR_STATUS_OK) {
         return status;
     }
 
@@ -568,7 +568,7 @@ fr_status
 fr_font_set_glyph_padding(fr_font *font, uint32_t left, uint32_t top, uint32_t right, uint32_t bottom) {
     bool            accepted = false;
     const fr_status status   = InvokeRasterizer(font, [&](auto &value) { accepted = value.SetGlyphPadding(left, top, right, bottom); });
-    if(status != FR_STATUS_OK) {
+    if (status != FR_STATUS_OK) {
         return status;
     }
 
@@ -607,7 +607,7 @@ fr_font_get_glyph_padding_bottom(const fr_font *font) {
 fr_status
 fr_font_set_packing_heuristic(fr_font *font, fr_font_packing_heuristic heuristic) {
     MindShake::Font::ELevelChoiceHeuristic value;
-    switch(heuristic) {
+    switch (heuristic) {
         case FR_FONT_PACKING_LEVEL_BOTTOM_LEFT:
             value = MindShake::Font::ELevelChoiceHeuristic::LevelBottomLeft;
             break;
@@ -627,11 +627,11 @@ fr_font_set_packing_heuristic(fr_font *font, fr_font_packing_heuristic heuristic
 fr_font_packing_heuristic
 fr_font_get_packing_heuristic(const fr_font *font) {
     const MindShake::Font *rasterizer = GetRasterizer(font);
-    if(rasterizer == nullptr) {
+    if (rasterizer == nullptr) {
         return FR_FONT_PACKING_INVALID;
     }
 
-    switch(rasterizer->GetPackingHeuristic()) {
+    switch (rasterizer->GetPackingHeuristic()) {
         case MindShake::Font::ELevelChoiceHeuristic::LevelBottomLeft:
             return FR_FONT_PACKING_LEVEL_BOTTOM_LEFT;
 
@@ -644,8 +644,8 @@ fr_font_get_packing_heuristic(const fr_font *font) {
 
 //-------------------------------------
 fr_status
-fr_font_set_allow_rotation(fr_font *font, bool allow) {
-    return InvokeRasterizer(font, [allow](auto &value) { value.SetAllowRotation(allow); });
+fr_font_set_allow_rotation(fr_font *font, bool enabled) {
+    return InvokeRasterizer(font, [enabled](auto &value) { value.SetAllowRotation(enabled); });
 }
 
 //-------------------------------------
@@ -659,7 +659,7 @@ fr_font_get_allow_rotation(const fr_font *font) {
 fr_status
 fr_font_draw_text(fr_font *font, const char *utf8, uint8_t text_height, uint32_t color,
                   uint32_t *dst, uint32_t dst_stride, int32_t pos_x, int32_t pos_y) {
-    if(utf8 == nullptr || dst == nullptr || dst_stride == 0) {
+    if (utf8 == nullptr || dst == nullptr || dst_stride == 0) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
@@ -671,12 +671,12 @@ fr_font_draw_text(fr_font *font, const char *utf8, uint8_t text_height, uint32_t
 //-------------------------------------
 fr_status
 fr_font_get_text_box(fr_font *font, const char *utf8, uint8_t text_height, fr_rect *rect) {
-    if(rect == nullptr) {
+    if (rect == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
     *rect = fr_rect {};
-    if(utf8 == nullptr) {
+    if (utf8 == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
@@ -684,7 +684,7 @@ fr_font_get_text_box(fr_font *font, const char *utf8, uint8_t text_height, fr_re
     const fr_status status = Invoke(font, [&](MindShake::FontBase &font_value) {
         font_value.GetTextBox(utf8, text_height, &value);
     });
-    if(status == FR_STATUS_OK) {
+    if (status == FR_STATUS_OK) {
         rect->x      = value.x;
         rect->y      = value.y;
         rect->width  = value.width;
@@ -697,12 +697,12 @@ fr_font_get_text_box(fr_font *font, const char *utf8, uint8_t text_height, fr_re
 fr_status
 fr_font_get_glyph_quads(fr_font *font, const char *utf8, uint8_t text_height,
                         fr_glyph_quad *quads, size_t capacity, size_t *count) {
-    if(count == nullptr) {
+    if (count == nullptr) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
     *count = 0;
-    if(utf8 == nullptr || (quads == nullptr && capacity > 0)) {
+    if (utf8 == nullptr || (quads == nullptr && capacity > 0)) {
         return FR_STATUS_INVALID_ARGUMENT;
     }
 
@@ -710,12 +710,12 @@ fr_font_get_glyph_quads(fr_font *font, const char *utf8, uint8_t text_height,
     const fr_status status = Invoke(font, [&](MindShake::FontBase &font_value) {
         font_value.GetGlyphQuads(utf8, text_height, values);
     });
-    if(status != FR_STATUS_OK) {
+    if (status != FR_STATUS_OK) {
         return status;
     }
 
     const size_t written = std::min(capacity, values.size());
-    for(size_t i = 0; i < written; ++i) {
+    for (size_t i = 0; i < written; ++i) {
         const MindShake::GlyphQuad &value = values[i];
         fr_glyph_quad              &quad  = quads[i];
         quad.x                   = value.x;
@@ -770,7 +770,7 @@ fr_status
 fr_font_set_antialias_weights(fr_font *font, int32_t center, int32_t border, int32_t corner) {
     bool            accepted = false;
     const fr_status status   = InvokeRasterizer(font, [&](auto &value) { accepted = value.SetAntialiasWeights(center, border, corner); });
-    if(status != FR_STATUS_OK) {
+    if (status != FR_STATUS_OK) {
         return status;
     }
 
@@ -803,7 +803,7 @@ fr_status
 fr_font_ft_set_hinting(fr_font *font, fr_font_ft_hinting hinting) {
 #if defined(FONTRENDERER_USE_FREETYPE)
     MindShake::FontFT::EHinting value;
-    switch(hinting) {
+    switch (hinting) {
         case FR_FONT_FT_HINTING_NONE:
             value = MindShake::FontFT::EHinting::None;
             break;
@@ -836,11 +836,11 @@ fr_font_ft_hinting
 fr_font_ft_get_hinting(const fr_font *font) {
 #if defined(FONTRENDERER_USE_FREETYPE)
     const MindShake::FontFT *freeType = GetFreeType(font);
-    if(freeType == nullptr) {
+    if (freeType == nullptr) {
         return FR_FONT_FT_HINTING_INVALID;
     }
 
-    switch(freeType->GetHinting()) {
+    switch (freeType->GetHinting()) {
         case MindShake::FontFT::EHinting::None:
             return FR_FONT_FT_HINTING_NONE;
 

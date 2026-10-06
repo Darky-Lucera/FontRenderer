@@ -108,7 +108,7 @@ namespace MindShake {
             static constexpr uint32_t   kMaxTextureSize = 16384;
 
         public:
-            explicit                    FontBase(const char *fontName);
+            explicit                    FontBase(const char *fileName);
             virtual                     ~FontBase() = default;
 
                                         FontBase(const FontBase &)          = delete;
@@ -116,7 +116,7 @@ namespace MindShake {
 
             EStatus                     GetStatus() const                   { return mStatus;                           }
 
-            const std::string &         GetFontName() const                 { return mFontName;                         }
+            const std::string &         GetFileName() const                 { return mFileName;                         }
 
             // Rows of GetTextureWidth texels, in the format GetTextureFormat gives. nullptr if the font has no copy of the texture.
             const uint8_t *             GetTexture() const                  { return mTexture.empty() ? nullptr : mTexture.data(); }
@@ -139,7 +139,7 @@ namespace MindShake {
             void                        DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_t *dst, uint32_t dstStride, int32_t posX, int32_t posY);
             // Box covering every glyph DrawText would draw, relative to the position passed to it.
             // A text with nothing to draw, like an empty one, gives an empty box.
-            void                        GetTextBox(const char *utf8, uint8_t textHeight, Rect *pRect);
+            void                        GetTextBox(const char *utf8, uint8_t textHeight, Rect *rect);
             // The glyphs DrawText would draw, to draw them in another way, like with the GPU. The clipping does not apply.
             // It can add glyphs to the texture, so check GetTextureVersion afterwards.
             void                        GetGlyphQuads(const char *utf8, uint8_t textHeight, std::vector<GlyphQuad> &quads);
@@ -172,7 +172,7 @@ namespace MindShake {
             virtual int                         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) = 0;
 
         protected:
-            std::string            mFontName;
+            std::string            mFileName;
             std::vector<uint8_t>   mTexture;
             ETextureFormat         mTextureFormat  { ETextureFormat::Alpha8 };
             uint32_t               mTextureWidth   {};

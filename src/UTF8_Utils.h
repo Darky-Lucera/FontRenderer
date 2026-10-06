@@ -20,7 +20,7 @@ namespace MindShake {
     //---------------------------------
     inline uint32_t
     GetNextUTF32(const uint8_t **text) {
-        if(text == nullptr || *text == nullptr || **text == 0) {
+        if (text == nullptr || *text == nullptr || **text == 0) {
             return 0;
         }
 
@@ -29,19 +29,19 @@ namespace MindShake {
         uint32_t        codePoint;
         size_t          length;
 
-        if(lead < 0x80) {
+        if (lead < 0x80) {
             *text += 1;
             return lead;
         }
-        else if((lead & 0xE0) == 0xC0) {
+        else if ((lead & 0xE0) == 0xC0) {
             codePoint = lead & 0x1F;
             length    = 2;
         }
-        else if((lead & 0xF0) == 0xE0) {
+        else if ((lead & 0xF0) == 0xE0) {
             codePoint = lead & 0x0F;
             length    = 3;
         }
-        else if((lead & 0xF8) == 0xF0) {
+        else if ((lead & 0xF8) == 0xF0) {
             codePoint = lead & 0x07;
             length    = 4;
         }
@@ -51,8 +51,8 @@ namespace MindShake {
         }
 
         // Each byte is checked before reading the next one, so a truncated sequence stops at the terminating zero.
-        for(size_t i = 1; i < length; ++i) {
-            if((bytes[i] & 0xC0) != 0x80) {
+        for (size_t i = 1; i < length; ++i) {
+            if ((bytes[i] & 0xC0) != 0x80) {
                 *text += i;
                 return kReplacementCharacter;
             }
@@ -61,7 +61,7 @@ namespace MindShake {
 
         // An overlong form could encode a zero, which would end the text early.
         const uint32_t minimum = (length == 2) ? 0x80 : (length == 3) ? 0x800 : 0x10000;
-        if(codePoint < minimum || (codePoint >= 0xD800 && codePoint <= 0xDFFF) || codePoint > 0x10FFFF) {
+        if (codePoint < minimum || (codePoint >= 0xD800 && codePoint <= 0xDFFF) || codePoint > 0x10FFFF) {
             codePoint = kReplacementCharacter;
         }
 
@@ -74,17 +74,17 @@ namespace MindShake {
     UTF32_2_UTF8(const char32_t *utf32) {
         std::string utf8;
 
-        for(; *utf32 != 0; ++utf32) {
+        for (; *utf32 != 0; ++utf32) {
             const uint32_t codePoint = *utf32;
 
-            if(codePoint < 0x80) {
+            if (codePoint < 0x80) {
                 utf8 += char(codePoint);
             }
-            else if(codePoint < 0x800) {
+            else if (codePoint < 0x800) {
                 utf8 += char(0xC0 |  (codePoint >> 6));
                 utf8 += char(0x80 |  (codePoint        & 0x3F));
             }
-            else if(codePoint < 0x10000) {
+            else if (codePoint < 0x10000) {
                 utf8 += char(0xE0 |  (codePoint >> 12));
                 utf8 += char(0x80 | ((codePoint >> 6)  & 0x3F));
                 utf8 += char(0x80 |  (codePoint        & 0x3F));

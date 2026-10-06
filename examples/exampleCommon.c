@@ -34,21 +34,21 @@ resize(struct mfb_window *window, int width, int height) {
     (void) window;
 
     // realloc may free the buffer when asked for 0 bytes.
-    if(width <= 0 || height <= 0) {
+    if (width <= 0 || height <= 0) {
         return;
     }
 
     // If it fails, the old buffer is still valid and keeps being shown.
     buffer = (uint32_t *) realloc(g_screen.buffer, (size_t) width * (size_t) height * sizeof(*buffer));
-    if(buffer == NULL) {
+    if (buffer == NULL) {
         return;
     }
 
     // A clip border on the window edge follows the edge. Any other border only has to stay inside the new buffer.
-    if(g_screen.clip_right == (int32_t) g_screen.width || g_screen.clip_right > width) {
+    if (g_screen.clip_right == (int32_t) g_screen.width || g_screen.clip_right > width) {
         g_screen.clip_right = width;
     }
-    if(g_screen.clip_bottom == (int32_t) g_screen.height || g_screen.clip_bottom > height) {
+    if (g_screen.clip_bottom == (int32_t) g_screen.height || g_screen.clip_bottom > height) {
         g_screen.clip_bottom = height;
     }
 
@@ -68,17 +68,17 @@ example_set_app_directory(const char *argv0) {
     size_t      length;
     char       *directory;
 
-    if(backslash != NULL && (separator == NULL || backslash > separator)) {
+    if (backslash != NULL && (separator == NULL || backslash > separator)) {
         separator = backslash;
     }
-    if(separator == NULL) {
+    if (separator == NULL) {
         return;
     }
 
     // Keep the separator: "C:" alone is the current directory of drive C, and "/app" would give "".
     length = (size_t) (separator - argv0) + 1;
     directory = (char *) malloc(length + 1);
-    if(directory == NULL) {
+    if (directory == NULL) {
         return;
     }
     memcpy(directory, argv0, length);
@@ -91,13 +91,13 @@ example_set_app_directory(const char *argv0) {
 struct mfb_window *
 example_open_window(const char *title) {
     struct mfb_window *window = mfb_open_ex(title, g_screen.width, g_screen.height, MFB_WF_RESIZABLE);
-    if(window == NULL) {
+    if (window == NULL) {
         fprintf(stderr, "Cannot create window!\n");
         return NULL;
     }
 
     g_screen.buffer = (uint32_t *) calloc((size_t) g_screen.width * g_screen.height, sizeof(*g_screen.buffer));
-    if(g_screen.buffer == NULL) {
+    if (g_screen.buffer == NULL) {
         fprintf(stderr, "Cannot allocate the display buffer!\n");
         mfb_close(window);
         return NULL;
@@ -122,10 +122,10 @@ void
 example_clear(void) {
     uint32_t *row = g_screen.buffer;
     uint32_t  x, y;
-    for(y = 0; y < g_screen.height; ++y) {
+    for (y = 0; y < g_screen.height; ++y) {
         const uint32_t shade = 32 + (y * 128) / g_screen.height;
         const uint32_t color = UINT32_C(0xff000000) | (shade * UINT32_C(0x010101));
-        for(x = 0; x < g_screen.width; ++x) {
+        for (x = 0; x < g_screen.width; ++x) {
             row[x] = color;
         }
         row += g_screen.width;
@@ -152,10 +152,10 @@ example_fill_rect(int32_t left, int32_t top, int32_t right, int32_t bottom, uint
     right  = example_min(right, (int32_t) g_screen.width);
     bottom = example_min(bottom, (int32_t) g_screen.height);
 
-    for(y = top; y < bottom; ++y) {
+    for (y = top; y < bottom; ++y) {
         int32_t  x;
         uint32_t *row = &g_screen.buffer[(size_t) y * g_screen.width];
-        for(x = left; x < right; ++x) {
+        for (x = left; x < right; ++x) {
             row[x] = example_blend(row[x], color, alpha);
         }
     }
@@ -166,7 +166,7 @@ void
 example_draw_box(int32_t left, int32_t top, int32_t width, int32_t height) {
     const int32_t right  = left + width;
     const int32_t bottom = top + height;
-    if(width <= 0 || height <= 0) {
+    if (width <= 0 || height <= 0) {
         return;
     }
 
@@ -183,15 +183,15 @@ example_draw_texture(const uint8_t *texels, bool bgra, int32_t width, int32_t he
     const int32_t shown_bottom = example_min(bottom, top + height);
     int32_t       y;
 
-    for(y = example_max(top, 0); y < shown_bottom; ++y) {
+    for (y = example_max(top, 0); y < shown_bottom; ++y) {
         int32_t  x;
         uint32_t *row = &g_screen.buffer[(size_t) y * g_screen.width];
-        for(x = example_max(left, 0); x < shown_right; ++x) {
+        for (x = example_max(left, 0); x < shown_right; ++x) {
             const int32_t  texel_x = x - left;
             const int32_t  texel_y = y - top;
             const uint32_t square  = ((texel_x / 8 + texel_y / 8) % 2 != 0) ? UINT32_C(0xff383838) : UINT32_C(0xff4a4a4a);
             const size_t   texel   = (size_t) texel_y * (size_t) width + (size_t) texel_x;
-            if(bgra) {
+            if (bgra) {
                 const uint8_t  *bgra_texel = &texels[texel * 4];
                 const uint32_t inverse     = 255u - bgra_texel[3];
                 const uint32_t r           = bgra_texel[2] + (((square >> 16) & 0xff) * inverse) / 255;
@@ -219,7 +219,7 @@ example_draw_clipping(void) {
     const int32_t bottom = g_screen.clip_bottom;
     const int32_t x      = g_bottom_right_selected ? right - 2  : left;
     const int32_t y      = g_bottom_right_selected ? bottom - 2 : top;
-    if(g_screen.show_clipping == false) {
+    if (g_screen.show_clipping == false) {
         return;
     }
 
@@ -237,47 +237,47 @@ example_draw_clipping(void) {
 //-------------------------------------
 void
 example_handle_key(struct mfb_window *window, mfb_key key, bool is_pressed) {
-    switch(key) {
+    switch (key) {
         case MFB_KB_KEY_LEFT:
-            if(g_bottom_right_selected == false) {
-                if(g_screen.clip_left > 0) {
+            if (g_bottom_right_selected == false) {
+                if (g_screen.clip_left > 0) {
                     --g_screen.clip_left;
                 }
             }
-            else if(g_screen.clip_right > 0 && g_screen.clip_right > g_screen.clip_left) {
+            else if (g_screen.clip_right > 0 && g_screen.clip_right > g_screen.clip_left) {
                 --g_screen.clip_right;
             }
             break;
 
         case MFB_KB_KEY_RIGHT:
-            if(g_bottom_right_selected == false) {
-                if(g_screen.clip_left < (int32_t) g_screen.width && g_screen.clip_left < g_screen.clip_right) {
+            if (g_bottom_right_selected == false) {
+                if (g_screen.clip_left < (int32_t) g_screen.width && g_screen.clip_left < g_screen.clip_right) {
                     ++g_screen.clip_left;
                 }
             }
-            else if(g_screen.clip_right < (int32_t) g_screen.width) {
+            else if (g_screen.clip_right < (int32_t) g_screen.width) {
                 ++g_screen.clip_right;
             }
             break;
 
         case MFB_KB_KEY_DOWN:
-            if(g_bottom_right_selected == false) {
-                if(g_screen.clip_top < (int32_t) g_screen.height && g_screen.clip_top < g_screen.clip_bottom) {
+            if (g_bottom_right_selected == false) {
+                if (g_screen.clip_top < (int32_t) g_screen.height && g_screen.clip_top < g_screen.clip_bottom) {
                     ++g_screen.clip_top;
                 }
             }
-            else if(g_screen.clip_bottom < (int32_t) g_screen.height) {
+            else if (g_screen.clip_bottom < (int32_t) g_screen.height) {
                 ++g_screen.clip_bottom;
             }
             break;
 
         case MFB_KB_KEY_UP:
-            if(g_bottom_right_selected == false) {
-                if(g_screen.clip_top > 0) {
+            if (g_bottom_right_selected == false) {
+                if (g_screen.clip_top > 0) {
                     --g_screen.clip_top;
                 }
             }
-            else if(g_screen.clip_bottom > 0 && g_screen.clip_bottom > g_screen.clip_top) {
+            else if (g_screen.clip_bottom > 0 && g_screen.clip_bottom > g_screen.clip_top) {
                 --g_screen.clip_bottom;
             }
             break;
@@ -286,11 +286,11 @@ example_handle_key(struct mfb_window *window, mfb_key key, bool is_pressed) {
             break;
     }
 
-    if(is_pressed == false) {
+    if (is_pressed == false) {
         return;
     }
 
-    switch(key) {
+    switch (key) {
         case MFB_KB_KEY_ESCAPE:
             mfb_close(window);
             break;
@@ -312,7 +312,7 @@ example_get_fps(void) {
     static float    fps         = 60.0f;
 
     ++frame_count;
-    if(frame_count >= 60) {
+    if (frame_count >= 60) {
         const double time = mfb_timer_now(g_fps_timer);
         frame_count = 0;
         mfb_timer_reset(g_fps_timer);
@@ -328,7 +328,7 @@ example_get_file_size(const char *file_name) {
     FILE *file = fopen(file_name, "rb");
     long size;
 
-    if(file == NULL) {
+    if (file == NULL) {
         return 0;
     }
 

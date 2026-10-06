@@ -4,7 +4,7 @@
 #include <doctest/doctest.h>
 #include <vector>
 
-extern "C" int fr_test_c_api(const char *font_name, fr_font_backend backend);
+extern "C" int fr_test_c_api(const char *file_name, fr_font_backend backend);
 
 //-------------------------------------
 namespace {
@@ -86,7 +86,7 @@ TEST_CASE("Font C API rejects invalid handles and options") {
     CHECK(fr_font_get_size_mode(nullptr) == FR_FONT_SIZE_MODE_INVALID);
     CHECK(fr_font_set_packing_heuristic(nullptr, FR_FONT_PACKING_LEVEL_BOTTOM_LEFT) == FR_STATUS_INVALID_ARGUMENT);
     CHECK(fr_font_get_packing_heuristic(nullptr) == FR_FONT_PACKING_INVALID);
-    CHECK(fr_font_get_name(nullptr) == nullptr);
+    CHECK(fr_font_get_file_name(nullptr) == nullptr);
     CHECK(fr_font_get_texture(nullptr) == nullptr);
     CHECK(fr_font_get_texture_format(nullptr) == FR_FONT_TEXTURE_FORMAT_INVALID);
     CHECK(fr_font_set_glyph_spacing(nullptr, 1) == FR_STATUS_INVALID_ARGUMENT);
@@ -219,7 +219,7 @@ TEST_CASE("Font C API saves and loads baked fonts") {
     // A premultiplied white texel (m, m, m, m) draws as the coverage m.
     const uint8_t        *coverage = fr_font_get_texture(baked);
     std::vector<uint8_t> white;
-    for(size_t i = 0; i < size_t(width) * height; ++i) {
+    for (size_t i = 0; i < size_t(width) * height; ++i) {
         white.insert(white.end(), 4, coverage[i]);
     }
     fr_font *color = nullptr;

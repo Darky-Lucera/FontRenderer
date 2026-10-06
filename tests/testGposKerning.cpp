@@ -411,10 +411,10 @@ TEST_CASE("GposKerning reads classes of glyphs") {
 
 //-------------------------------------
 TEST_CASE("GposKerning finds the advance in any value format") {
-    const uint16_t formats1[] = { kXAdvance, kXPlacement | kXAdvance, kYPlacement | kXAdvance | kXAdvDevice, kXPlacement | kYPlacement | kXAdvance | kYAdvance, kAllFields };
-    const uint16_t formats2[] = { 0, kXPlacement, kXAdvance, kAllFields };
-    for (const uint16_t format1 : formats1) {
-        for (const uint16_t format2 : formats2) {
+    const uint16_t kFormats1[] = { kXAdvance, kXPlacement | kXAdvance, kYPlacement | kXAdvance | kXAdvDevice, kXPlacement | kYPlacement | kXAdvance | kYAdvance, kAllFields };
+    const uint16_t kFormats2[] = { 0, kXPlacement, kXAdvance, kAllFields };
+    for (const uint16_t format1 : kFormats1) {
+        for (const uint16_t format2 : kFormats2) {
             CAPTURE(format1);
             CAPTURE(format2);
             const Bytes pairs   = MakePairPos1({ { 10, 20, -50 }, { 10, 21, -30 } }, format1, format2);
