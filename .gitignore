@@ -13,3 +13,7 @@
 /bin/baked.frb
 /bin/baked.tga
 /vs
+# Written by the benchmark scripts
+/bin/benchmark_*.txt
+/bin/benchmark_*.csv
+/bin/*.html

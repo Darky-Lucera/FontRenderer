@@ -1,3 +1,4 @@
+#include "CpuX86.h"
 #include "GlyphDraw.h"
 //-------------------------------------
 #include <doctest/doctest.h>
@@ -135,8 +136,13 @@ TEST_CASE("The functions that draw a glyph leave the pixels of the blend, the sa
 
                         CHECK(draw(GlyphDraw::GetScalarDrawGlyphFunction(bytesPerTexel, opaque)) == expected);
                         CHECK(draw(GlyphDraw::GetDrawGlyphFunction(bytesPerTexel, opaque)) == expected);
-#if defined(FONTRENDERER_SSE2)
+#if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_X86_64_V2)
                         CHECK(draw(GlyphDraw::GetSse2DrawGlyphFunction(bytesPerTexel, opaque)) == expected);
+#endif
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
+                        if(CpuX86::HasX64v2()) {
+                            CHECK(draw(GlyphDraw::GetX64v2DrawGlyphFunction(bytesPerTexel, opaque)) == expected);
+                        }
 #endif
 #if defined(FONTRENDERER_NEON)
                         CHECK(draw(GlyphDraw::GetNeonDrawGlyphFunction(bytesPerTexel, opaque)) == expected);
@@ -211,9 +217,15 @@ TEST_CASE("The functions that draw a glyph only read and write the texels and th
             const bool opaque = alpha == 255;
             CHECK(draw(GlyphDraw::GetScalarDrawGlyphFunction(bytesPerTexel, opaque)) == expected);
             CHECK(draw(GlyphDraw::GetDrawGlyphFunction(bytesPerTexel, opaque)) == expected);
-#if defined(FONTRENDERER_SSE2)
+#if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_X86_64_V2)
             CHECK(draw(GlyphDraw::GetSse2DrawGlyphFunction(bytesPerTexel, opaque)) == expected);
             CHECK(draw(GlyphDraw::GetSse2DrawGlyphFunction(bytesPerTexel, false)) == expected);
+#endif
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
+            if(CpuX86::HasX64v2()) {
+                CHECK(draw(GlyphDraw::GetX64v2DrawGlyphFunction(bytesPerTexel, opaque)) == expected);
+                CHECK(draw(GlyphDraw::GetX64v2DrawGlyphFunction(bytesPerTexel, false)) == expected);
+            }
 #endif
 #if defined(FONTRENDERER_NEON)
             CHECK(draw(GlyphDraw::GetNeonDrawGlyphFunction(bytesPerTexel, opaque)) == expected);
@@ -222,3 +234,28 @@ TEST_CASE("The functions that draw a glyph only read and write the texels and th
         }
     }
 }
+
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
+//-------------------------------------
+TEST_CASE("GetDrawGlyphFunction picks the copy for x86-64-v2 only when the processor can run it") {
+    for(uint32_t bytesPerTexel : { 1u, 4u }) {
+        for(bool opaque : { false, true }) {
+            CAPTURE(bytesPerTexel);
+            CAPTURE(opaque);
+#if defined(FONTRENDERER_X86_64_V2)
+            // The library stops at start on a processor without x86-64-v2, so it never gets here without it.
+            CHECK(CpuX86::HasX64v2());
+            CHECK(GlyphDraw::GetDrawGlyphFunction(bytesPerTexel, opaque) == GlyphDraw::GetX64v2DrawGlyphFunction(bytesPerTexel, opaque));
+#else
+            const GlyphDraw::DrawGlyphFunction sse2 = GlyphDraw::GetSse2DrawGlyphFunction(bytesPerTexel, opaque);
+            const GlyphDraw::DrawGlyphFunction best = CpuX86::HasX64v2() ? GlyphDraw::GetX64v2DrawGlyphFunction(bytesPerTexel, opaque) : sse2;
+            CHECK(GlyphDraw::GetDrawGlyphFunction(bytesPerTexel, opaque) == best);
+
+            GlyphDraw::AllowX64v2(false);
+            CHECK(GlyphDraw::GetDrawGlyphFunction(bytesPerTexel, opaque) == sse2);
+            GlyphDraw::AllowX64v2(true);
+#endif
+        }
+    }
+}
+#endif

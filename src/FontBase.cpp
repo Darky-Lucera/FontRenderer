@@ -6,12 +6,14 @@
 //-----------------------------------------------------------------------------
 
 #include "FontBase.h"
+#include "CpuX86.h"
 #include "GlyphDraw.h"
 #include "UTF8_Utils.h"
 //-------------------------------------
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <math.h>      // ::lround, as DJGPP has no std::lround
 #include <unordered_set>
@@ -20,6 +22,28 @@ using namespace MindShake;
 
 // C++14 needs these definitions whenever the constants are bound to a reference.
 constexpr uint32_t FontBase::kMaxTextureSize;
+
+#if defined(FONTRENDERER_X86_64_V2)
+//-------------------------------------
+namespace {
+
+    // The library is built for x86-64-v2, so an older processor would stop at the first instruction of that level, with
+    // an illegal instruction that does not say why. This object stops the program at start instead, with the reason.
+    // It is in this file because every program that uses a font links it. The static objects of the program that are
+    // built before this one still run first.
+    struct X64v2Check {
+        X64v2Check() {
+            if(CpuX86::HasX64v2() == false) {
+                std::fputs("FontRenderer was built for x86-64-v2 (FONTRENDERER_X86_64_V2), which this processor does not have.\n", stderr);
+                std::abort();
+            }
+        }
+    };
+
+    const X64v2Check gX64v2Check;
+
+} // end of namespace
+#endif
 
 // The metrics file is little-endian, and each record is packed without padding.
 //-------------------------------------

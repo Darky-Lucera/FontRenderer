@@ -6,6 +6,7 @@
 //-----------------------------------------------------------------------------
 
 #include "GlyphDraw.h"
+#include "CpuX86.h"
 
 using namespace MindShake;
 
@@ -130,7 +131,19 @@ namespace {
         });
     }
 
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
+    bool gAllowX64v2 = true;
+#endif
+
 } // end of namespace
+
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
+//-------------------------------------
+void
+GlyphDraw::AllowX64v2(bool allow) {
+    gAllowX64v2 = allow;
+}
+#endif
 
 //-------------------------------------
 GlyphDraw::DrawGlyphFunction
@@ -145,7 +158,15 @@ GlyphDraw::GetScalarDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
 //-------------------------------------
 GlyphDraw::DrawGlyphFunction
 GlyphDraw::GetDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
-#if defined(FONTRENDERER_SSE2)
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2)
+    return GetX64v2DrawGlyphFunction(bytesPerTexel, opaque);
+#elif defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
+    if(gAllowX64v2 && CpuX86::HasX64v2()) {
+        return GetX64v2DrawGlyphFunction(bytesPerTexel, opaque);
+    }
+
+    return GetSse2DrawGlyphFunction(bytesPerTexel, opaque);
+#elif defined(FONTRENDERER_SSE2)
     return GetSse2DrawGlyphFunction(bytesPerTexel, opaque);
 #elif defined(FONTRENDERER_NEON)
     return GetNeonDrawGlyphFunction(bytesPerTexel, opaque);

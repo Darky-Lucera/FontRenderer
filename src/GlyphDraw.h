@@ -40,14 +40,26 @@ namespace GlyphDraw {
                                        uint32_t *dst, uint32_t dstStride, uint32_t color, uint32_t alpha);
 
     // The function for a texture of 1 byte per texel, a coverage, or of 4, a premultiplied BGRA. The one for an
-    // opaque text must only get a color with an alpha of 255. It is the fastest the library was built with.
+    // opaque text must only get a color with an alpha of 255. It is the fastest the library was built with that this
+    // processor can run.
     DrawGlyphFunction   GetDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
 
     // The same function of each implementation. All of them leave the same pixels, which the tests check.
     DrawGlyphFunction   GetScalarDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
 
-#if defined(FONTRENDERER_SSE2)
+#if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_X86_64_V2)
     DrawGlyphFunction   GetSse2DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
+#endif
+
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
+    DrawGlyphFunction   GetX64v2DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
+#endif
+
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
+    // GetDrawGlyphFunction returns the functions of x86-64-v2 when the processor has that level and they are allowed,
+    // which they are unless this is called with false. The tests do it, to check the choice of the SSE2 functions on
+    // any processor.
+    void                AllowX64v2(bool allow);
 #endif
 
 #if defined(FONTRENDERER_NEON)

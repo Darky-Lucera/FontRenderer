@@ -46,6 +46,31 @@ font.DrawText(text, fontSize, color32, bufferDest, bufferDestStride, posX, posY)
 
 **Note**: `DrawText` also blends the alpha of the buffer, as the *over* operator of Porter and Duff does. An opaque buffer stays opaque. On a transparent buffer, the result has premultiplied alpha: blue, green and red are multiplied by the alpha. A buffer that already has translucent pixels must have premultiplied alpha too. The color of the text is not premultiplied.
 
+### How a pixel is blended
+
+The scalar, SSE2, x86-64-v2 and NEON code leave exactly the same pixels.
+Each channel is a value from 0 to 255, and each operation below works on every channel.
+
+- `tintColor` is the color of the text, not premultiplied.
+- `fontTexture` is the font texel, premultiplied.
+  - A texel of an `Alpha8` texture is a coverage: `(coverage, coverage, coverage, coverage)`.
+  - A texel of a `BGRA32Premultiplied` texture is: `(round(r * coverage / 255), round(g * coverage / 255), round(b * coverage / 255), coverage)`.
+- `dest` is the pixel of the buffer. In an opaque buffer, as a screen buffer usually is, premultiplied alpha changes nothing. A buffer with translucent pixels must have premultiplied alpha, and it keeps it.
+
+
+```text
+premultipliedTint.rgb = round(tintColor.rgb * tintColor.a / 255)
+premultipliedTint.a   = tintColor.a
+
+source      = fontTexture * premultipliedTint
+sourceAlpha = round(source.a / 255)
+
+dest = round((source + dest * (255 - sourceAlpha)) / 255)
+```
+
+This is the *over* operator with premultiplied alpha.
+`source` is not divided by 255 before it is added to `dest`, so each channel is rounded only once. The division rounds exactly to the nearest integer for every value the blend can produce: `round(sum / 255) = (sum + 128 + ((sum + 128) >> 8)) >> 8`.
+
 ### Classes
 
 - `FontBase` lays out and draws text with the glyphs a font already has. `DrawText`, `GetTextBox` and `GetGlyphQuads` are here.
@@ -185,8 +210,10 @@ You have two options:
   |`FONTRENDERER_USE_FREETYPE`|`OFF`|The FreeType backend, `FontFT`. CMake uses the FreeType installed in the system, and downloads it if there is none|
   |`FONTRENDERER_USE_BAKED`|`ON`|The backend that reads baked fonts, `FontBaked`|
   |`FONTRENDERER_DISABLE_SIMD`|`OFF`|Only the scalar drawing code. By default the text is drawn with SSE2 where the compiler may use it, always on x86 of 64 bits, and with NEON on ARM64|
+  |`FONTRENDERER_X86_64_V2`|`ON`|Only for x86 of 64 bits. The whole library is built for x86-64-v2 (SSE3, SSSE3, SSE4.1, SSE4.2 and POPCNT), and it stops the program at start, with a message, on a processor without that level. `OFF` builds the library for the default x86-64 level, which includes SSE and SSE2, and draws the text with a copy for x86-64-v2 only when the processor has it. The gain is small: the glyphs draw about 6% faster. The comment of the option in `CMakeLists.txt` has the details|
   |`FONTRENDERER_BUILD_EXAMPLES`|`ON` only when FontRenderer is the main project|The examples, which show every backend that is on. The [effects example](#the-effects-example) also needs `FONTRENDERER_USE_BAKED`. They download MiniFB, unless the project that adds FontRenderer already has a `minifb` target|
   |`FONTRENDERER_BUILD_TESTS`|`ON` only when FontRenderer is the main project|The unit tests|
+  |`FONTRENDERER_BUILD_BENCHMARKS`|`OFF`|The benchmark of the drawing code, `benchmarkDraw`. See [Benchmarks](#benchmarks)|
 
   At least one backend must be on. The library defines `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` and `FONTRENDERER_USE_BAKED` for each backend that is on, also for the code that uses the library. The header of each backend, like `FontSTB.h`, stops the build if its macro is not defined.
 
@@ -195,12 +222,15 @@ You have two options:
 - Select the library you want to use into your project (stb_truetype, libschrift, FreeType) and drop the following files in your project.
   Define the macro of each backend you choose, `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` or `FONTRENDERER_USE_BAKED`, for every file you compile: the header of the backend and the C API need it.
 
+  - CpuX86.h
+  - CpuX86.cpp
   - FontBase.h
   - FontBase.cpp
   - GlyphDraw.h
   - GlyphDraw.cpp
   - GlyphDrawNeon.cpp
   - GlyphDrawSse2.cpp
+  - GlyphDrawX64v2.cpp (it builds nothing unless you define `FONTRENDERER_X86_64_V2` or `FONTRENDERER_X86_64_V2_AT_RUNTIME`, which `Platform.h` explains)
   - MappedFile.h
   - MappedFile.cpp
   - Platform.h
@@ -257,6 +287,22 @@ You have two options:
 
   - FontC.h
   - FontC.cpp, which only creates fonts with the backends whose macro is defined
+
+## Benchmarks
+
+`benchmarkDraw` measures how fast the text is drawn in 18 scenarios: Roboto at 14, 24, 40 and 96 pixels, with and without rotated glyphs, with an opaque and a translucent color, and the baked Lilita One with effects, which has a color texture. Build it in Release with `-DFONTRENDERER_BUILD_BENCHMARKS=ON`. It reads its fonts from `bin/resources`.
+
+```text
+benchmarkDraw [variant...] [--scenario text]... [--csv file]
+```
+
+Without arguments it measures every variant in every scenario. `--scenario` keeps the scenarios whose name has the text; with several, a scenario must have all of them. `Reference` is `DrawText` itself, with the layout and the clipping. `Baseline` draws the same glyphs with the drawing functions of the library, and the other variants are versions of those functions, kept to compare ideas. It starts with the compiler and the processor, and for each variant it prints the median and the minimum time of 15 samples, its speed against `Baseline`, and whether it leaves the expected pixels.
+
+The scripts are in `benchmarks/scripts`. `benchmark.bat` on Windows and `benchmark.sh` on macOS and Linux run the benchmark of `bin` and save its results there, as text, CSV and an HTML page with charts. They pass their arguments to `benchmarkDraw`. The files are named after the system, the compiler, the architecture and the processor, like `benchmark_windows_gcc15_x64_i7-10850h.txt`, so that runs on other computers or with other compilers do not replace each other. [plot_benchmark.py](benchmarks/scripts/plot_benchmark.py) makes the HTML page, and it can also put several CSV files in one page to compare them. It only needs Python.
+
+On Windows, `benchmarkAndroid.bat` builds the benchmark for Android with the NDK and the CMake of the Android SDK, runs it on the phone that `adb` sees, and saves the results in `bin`. The phone needs USB debugging. While the benchmark runs, the script keeps the screen on and pins the benchmark to the fastest core that Android lets it use: with the screen off, phones slow down their big cores, and they move programs between big and small cores. `--core N` picks another core, and `--abi armeabi-v7a` builds for a phone of 32 bits.
+
+The same code placed somewhere else in the program can run up to 10 % faster or slower. Trust a difference only if it is clear and it repeats in two runs.
 
 ## Licenses
 

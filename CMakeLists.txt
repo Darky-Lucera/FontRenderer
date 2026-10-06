@@ -12,12 +12,27 @@ else()
 endif()
 option(FONTRENDERER_BUILD_EXAMPLES   "Build the examples, which need MiniFB"                ${FONTRENDERER_IS_TOP_LEVEL})
 option(FONTRENDERER_BUILD_TESTS      "Build the unit tests"                                 ${FONTRENDERER_IS_TOP_LEVEL})
+option(FONTRENDERER_BUILD_BENCHMARKS "Build the benchmark of the drawing code"              OFF)
 
 option(FONTRENDERER_USE_STB          "Build the stb_truetype backend"                       ON)
 option(FONTRENDERER_USE_LIBSCHRIFT   "Build the libschrift backend"                         ON)
 option(FONTRENDERER_USE_FREETYPE     "Build the FreeType backend"                           OFF)
 option(FONTRENDERER_USE_BAKED        "Build the backend that reads baked fonts"             ON)
 option(FONTRENDERER_DISABLE_SIMD     "Draw only with the scalar code, no SSE2 or NEON"      OFF)
+
+# x86-64-v2 adds SSE3, SSSE3, SSE4.1, SSE4.2 and POPCNT to the default x86-64 level, which already includes SSE and
+# SSE2. Intel processors have it since Nehalem (2008), and AMD ones since Bulldozer (2011). The Steam Hardware Survey of
+# September 2025 gives SSE4.2, the newest part of the level, on 99.8% of the computers. Steam users have newer computers
+# than most people, but the level is common enough that Red Hat Enterprise Linux 9 and its derivatives require it.
+#
+# The gain is small. Against the drawing of the default level, the glyphs drew 6% faster on average over 17
+# combinations of processor and compiler: 10% with an opaque text, 3% with a translucent one and 5% with a texture of
+# BGRA32. Building the rest of the library for x86-64-v2 made no difference that could be measured.
+#
+# ON builds the whole library for x86-64-v2. On a processor without it, the library stops the program at start, with a
+# message. OFF builds the library for the default x86-64 level, plus a second copy of the drawing for x86-64-v2, which
+# it only uses when cpuid says that the processor has the level. Only 64-bit x86 builds use the option.
+option(FONTRENDERER_X86_64_V2        "Build the library for x86-64-v2; OFF only uses it in the drawing, if the processor has it" ON)
 
 if (FONTRENDERER_USE_STB OR FONTRENDERER_USE_LIBSCHRIFT OR FONTRENDERER_USE_FREETYPE)
     set(FONTRENDERER_HAS_RASTERIZER ON)
@@ -143,10 +158,61 @@ check_cxx_source_compiles([=[
     int main() { return 0; }
 ]=] FONTRENDERER_TARGET_WITHOUT_X86)
 
+# x86-64-v2 only exists for 64-bit x86. A universal build of macOS also builds for ARM, which does not take the option,
+# so it only goes to the x86_64 part.
+set(FONTRENDERER_X86_64_V2_FLAGS "")
+if (NOT FONTRENDERER_TARGET_WITHOUT_X86 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    include(CheckCXXCompilerFlag)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        set(FONTRENDERER_X86_64_V2_CANDIDATE "/arch:SSE4.2")
+    elseif (APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES ";")
+        set(FONTRENDERER_X86_64_V2_CANDIDATE "-Xarch_x86_64;-march=x86-64-v2")
+    else()
+        # clang-cl does not take /arch:SSE4.2, but it takes this.
+        set(FONTRENDERER_X86_64_V2_CANDIDATE "-march=x86-64-v2")
+    endif()
+    check_cxx_compiler_flag("${FONTRENDERER_X86_64_V2_CANDIDATE}" FONTRENDERER_HAS_X86_64_V2_FLAG)
+    if (FONTRENDERER_HAS_X86_64_V2_FLAG)
+        set(FONTRENDERER_X86_64_V2_FLAGS "${FONTRENDERER_X86_64_V2_CANDIDATE}")
+    else()
+        message(STATUS "FontRenderer: the compiler does not take ${FONTRENDERER_X86_64_V2_CANDIDATE}, so there is no code for x86-64-v2")
+    endif()
+endif()
+
+if (FONTRENDERER_X86_64_V2_FLAGS AND (FONTRENDERER_X86_64_V2 OR NOT FONTRENDERER_DISABLE_SIMD))
+    list(APPEND SRC_FontRenderer
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/CpuX86.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/CpuX86.h
+    )
+endif()
+
 if (NOT FONTRENDERER_DISABLE_SIMD AND NOT FONTRENDERER_TARGET_WITHOUT_X86)
     list(APPEND SRC_FontRenderer
         ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawSse2.cpp
     )
+    if (FONTRENDERER_X86_64_V2_FLAGS)
+        list(APPEND SRC_FontRenderer
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawX64v2.cpp
+        )
+        # GlyphDrawX64v2.cpp includes GlyphDrawSse2.cpp. Built in one unity file, both would define the same functions.
+        set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawX64v2.cpp
+        PROPERTIES
+            SKIP_UNITY_BUILD_INCLUSION ON
+        )
+        if (FONTRENDERER_X86_64_V2)
+            # With the whole library built for x86-64-v2, GlyphDrawSse2.cpp builds nothing by itself: GlyphDrawX64v2.cpp
+            # includes it.
+            set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawSse2.cpp
+            PROPERTIES
+                HEADER_FILE_ONLY ON
+            )
+        else()
+            set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawX64v2.cpp
+            PROPERTIES
+                COMPILE_OPTIONS "${FONTRENDERER_X86_64_V2_FLAGS}"
+            )
+        endif()
+    endif()
 endif()
 
 # The same for GlyphDrawNeon.cpp and ARM: a universal build of macOS needs the file for its ARM architecture.
@@ -267,6 +333,27 @@ if (FONTRENDERER_DISABLE_SIMD)
     )
 endif()
 
+# Public, so that the tests and the benchmark know which drawing functions GlyphDraw.h declares. Platform.h explains
+# both macros.
+if (FONTRENDERER_X86_64_V2_FLAGS)
+    if (FONTRENDERER_X86_64_V2)
+        target_compile_options(fontRenderer
+        PRIVATE
+            ${FONTRENDERER_X86_64_V2_FLAGS}
+        )
+
+        target_compile_definitions(fontRenderer
+        PUBLIC
+            FONTRENDERER_X86_64_V2
+        )
+    elseif (NOT FONTRENDERER_DISABLE_SIMD)
+        target_compile_definitions(fontRenderer
+        PUBLIC
+            FONTRENDERER_X86_64_V2_AT_RUNTIME
+        )
+    endif()
+endif()
+
 #--------------------------------------
 if (FONTRENDERER_BUILD_EXAMPLES)
     set(SRC_ExampleCommon
@@ -357,6 +444,188 @@ if (FONTRENDERER_BUILD_TESTS)
     if (DJGPP)
         target_compile_definitions(unitTests PRIVATE DOCTEST_CONFIG_NO_MULTITHREADING DOCTEST_CONFIG_NO_POSIX_SIGNALS)
         set_target_properties(unitTests PROPERTIES OUTPUT_NAME "unittest")
+    endif()
+endif()
+
+# Benchmarks
+#--------------------------------------
+# They render glyphs from a font file. Their times only mean something in a Release build.
+if (FONTRENDERER_BUILD_BENCHMARKS AND FONTRENDERER_HAS_RASTERIZER)
+    set(SRC_Benchmarks
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkCommon.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkCommon.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkDraw.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkSse2.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkSystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkSystem.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Baseline.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/MoreJumpsPerCase.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/MoreJumpsPerGlyph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/MoreJumpsPerCaseAlpha8.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Div255.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/MoreJumps.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/MoreJumpsPremultiplied.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/MoreJumpsNoInline.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/MoreJumpsNoInlineCast.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/MoreJumpsHybrid.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/MoreJumpsAlpha8.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/MoreJumpsAlpha8Hoisted.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/NoJumps.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Linear.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Pixel32.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Premultiplied.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Restrict.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/RoundEach.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/RoundOnce.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/RoundOnce64.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/RoundOnce64Premultiplied.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/RoundOnceOver.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/RoundOnceSwar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/RoundOnceSwarPremultiplied.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Scalar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Scalar64.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/ScalarSwar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Swar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Truncate.cpp
+        # The variants with SSE2. Each of these files compiles to nothing for a processor without it.
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Pixman.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/PixmanHybrid.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/PixmanRotated.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/PixmanUnaligned.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/RoundOnceSse2Premultiplied.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Sse2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Sse2Overlap.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Sse2PerCase.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Sse2RoundOnce.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Sse2Spread.cpp
+        # The variants with NEON. Each of these files compiles to nothing for a processor without it.
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/NeonOverlap.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/NeonPacked.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/NeonPerCase.cpp
+    )
+
+    # Only the file of the X64v2 variants is built for x86-64-v2, so that the other variants stay SSE2 code. The processor
+    # that runs the benchmark must have that level: the file never asks the processor for it, and the linker can take
+    # from it the copy of an inline function that other files share.
+    set(FONTRENDERER_X64V2_FLAG "")
+    if (NOT FONTRENDERER_DISABLE_SIMD)
+        set(FONTRENDERER_X64V2_FLAG "${FONTRENDERER_X86_64_V2_FLAGS}")
+    endif()
+
+    if (FONTRENDERER_X64V2_FLAG)
+        list(APPEND SRC_Benchmarks
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/X64v2.cpp
+        )
+        set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/X64v2.cpp
+        PROPERTIES
+            COMPILE_OPTIONS "${FONTRENDERER_X64V2_FLAG}"
+        )
+    endif()
+
+    # The Aligned variants build Sse2Overlap.cpp and X64v2.cpp again with their loops aligned to 32 bytes and no jump
+    # that crosses or ends on a 32-byte boundary. MSVC has no option to align loops, so with it they only move the jumps.
+    # They are left out unless the compiler takes every flag.
+    set(FONTRENDERER_ALIGN_FLAGS "")
+    if (NOT FONTRENDERER_DISABLE_SIMD AND NOT FONTRENDERER_TARGET_WITHOUT_X86)
+        include(CheckCXXCompilerFlag)
+        if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+            set(FONTRENDERER_ALIGN_FLAGS "/QIntel-jcc-erratum")
+        elseif (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+            set(FONTRENDERER_ALIGN_FLAGS "/clang:-falign-loops=32" "/clang:-mbranches-within-32B-boundaries")
+        elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            set(FONTRENDERER_ALIGN_FLAGS "-falign-loops=32" "-mbranches-within-32B-boundaries")
+        else()
+            # GCC leaves the jumps to the assembler, which has the option since binutils 2.34.
+            set(FONTRENDERER_ALIGN_FLAGS "-falign-loops=32" "-Wa,-mbranches-within-32B-boundaries")
+        endif()
+        foreach (flag IN LISTS FONTRENDERER_ALIGN_FLAGS)
+            string(MAKE_C_IDENTIFIER "FONTRENDERER_HAS_FLAG_${flag}" flag_result)
+            check_cxx_compiler_flag("${flag}" ${flag_result})
+            if (NOT ${flag_result})
+                set(FONTRENDERER_ALIGN_FLAGS "")
+                break()
+            endif()
+        endforeach()
+    endif()
+
+    if (FONTRENDERER_ALIGN_FLAGS)
+        list(APPEND SRC_Benchmarks
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Sse2OverlapAligned.cpp
+        )
+        set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Sse2OverlapAligned.cpp
+        PROPERTIES
+            COMPILE_OPTIONS "${FONTRENDERER_ALIGN_FLAGS}"
+        )
+        if (FONTRENDERER_X64V2_FLAG)
+            list(APPEND SRC_Benchmarks
+                ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/X64v2Aligned.cpp
+            )
+            set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/X64v2Aligned.cpp
+            PROPERTIES
+                COMPILE_OPTIONS "${FONTRENDERER_X64V2_FLAG};${FONTRENDERER_ALIGN_FLAGS}"
+            )
+        endif()
+    endif()
+    source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks" FILES ${SRC_Benchmarks})
+
+    add_executable(benchmarkDraw
+        ${SRC_Benchmarks}
+    )
+
+    fontrenderer_setup_target(benchmarkDraw)
+
+    target_include_directories(benchmarkDraw
+    PRIVATE
+        benchmarks
+    )
+
+    # On Android the benchmark runs on the device, from the folder where benchmarks/scripts/benchmarkAndroid.bat
+    # copies it and its resources. Both paths can be given to CMake. Relative ones, such as "resources/" and "./",
+    # start at the folder the benchmark runs from, so that benchmark can be taken to another computer.
+    if (ANDROID)
+        set(FONTRENDERER_DEFAULT_RESOURCES "/data/local/tmp/fontrenderer/resources/")
+        set(FONTRENDERER_DEFAULT_OUTPUT    "/data/local/tmp/fontrenderer/")
+    else()
+        set(FONTRENDERER_DEFAULT_RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/bin/resources/")
+        set(FONTRENDERER_DEFAULT_OUTPUT    "${CMAKE_CURRENT_BINARY_DIR}/")
+    endif()
+    if (NOT DEFINED FONTRENDERER_BENCHMARK_RESOURCES)
+        set(FONTRENDERER_BENCHMARK_RESOURCES "${FONTRENDERER_DEFAULT_RESOURCES}")
+    endif()
+    if (NOT DEFINED FONTRENDERER_BENCHMARK_OUTPUT)
+        set(FONTRENDERER_BENCHMARK_OUTPUT    "${FONTRENDERER_DEFAULT_OUTPUT}")
+    endif()
+
+    target_compile_definitions(benchmarkDraw
+    PRIVATE
+        FONT_RENDERER_BENCHMARK_RESOURCES="${FONTRENDERER_BENCHMARK_RESOURCES}"
+    )
+
+    target_compile_definitions(benchmarkDraw
+    PRIVATE
+        FONT_RENDERER_BENCHMARK_OUTPUT="${FONTRENDERER_BENCHMARK_OUTPUT}"
+    )
+
+    target_link_libraries(benchmarkDraw
+    PRIVATE
+        fontRenderer)
+
+    if (FONTRENDERER_X64V2_FLAG)
+        target_compile_definitions(benchmarkDraw
+        PRIVATE
+            FONTRENDERER_BENCHMARK_X64V2
+        )
+    endif()
+
+    if (FONTRENDERER_ALIGN_FLAGS)
+        target_compile_definitions(benchmarkDraw
+        PRIVATE
+            FONTRENDERER_BENCHMARK_ALIGNED
+        )
+    endif()
+
+    if (DJGPP)
+        set_target_properties(benchmarkDraw PROPERTIES OUTPUT_NAME "benchdrw")
     endif()
 endif()
 
