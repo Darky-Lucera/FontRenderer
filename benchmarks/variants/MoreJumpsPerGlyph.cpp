@@ -76,7 +76,7 @@ namespace MoreJumpsPerGlyph {
         // The texel is read through a uint32_t pointer, as the library reads it.
         //-----------------------------
         NO_INLINE void
-        DrawBgraOpaque(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRAOpaque(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                        uint32_t *dst, uint32_t dstStride, uint32_t color, uint32_t /*alpha*/) {
             DrawTexels<4>(texture, offset, stepX, stepY, width, height, dst, dstStride,
                           [color](const uint8_t *texel, uint32_t &pixel) {
@@ -93,7 +93,7 @@ namespace MoreJumpsPerGlyph {
 
         //-----------------------------
         NO_INLINE void
-        DrawBgra(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRA(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                  uint32_t *dst, uint32_t dstStride, uint32_t color, uint32_t alpha) {
             DrawTexels<4>(texture, offset, stepX, stepY, width, height, dst, dstStride,
                           [color, alpha](const uint8_t *texel, uint32_t &pixel) {
@@ -113,7 +113,7 @@ namespace MoreJumpsPerGlyph {
                 return opaque ? DrawAlpha8Opaque : DrawAlpha8;
             }
 
-            return opaque ? DrawBgraOpaque : DrawBgra;
+            return opaque ? DrawBGRAOpaque : DrawBGRA;
         }
 
     } // end of namespace

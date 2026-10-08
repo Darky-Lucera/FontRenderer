@@ -99,11 +99,11 @@ namespace {
     // An opaque texel under an opaque color is still tinted with the color, but it is not blended with the pixel.
     //---------------------------------
     FONTRENDERER_NO_INLINE void
-    DrawBgraOpaque(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+    DrawBGRAOpaque(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                    uint32_t *dst, uint32_t dstStride, uint32_t color, uint32_t /*alpha*/) {
         DrawTexels<4>(texture, offset, stepX, stepY, width, height, dst, dstStride,
                       [color](const uint8_t *texel, uint32_t &pixel) {
-            // Reading the texel through a uint32_t pointer, here and in DrawBgra, is undefined behavior: it breaks
+            // Reading the texel through a uint32_t pointer, here and in DrawBGRA, is undefined behavior: it breaks
             // the aliasing rule, and it gives the channels in another order on a big-endian processor. It works with
             // GCC and MSVC on x86. The portable load is:
             //   uint32_t(texel[0]) | (uint32_t(texel[1]) << 8) | (uint32_t(texel[2]) << 16) | (uint32_t(texel[3]) << 24)
@@ -120,7 +120,7 @@ namespace {
 
     //---------------------------------
     FONTRENDERER_NO_INLINE void
-    DrawBgra(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+    DrawBGRA(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
              uint32_t *dst, uint32_t dstStride, uint32_t color, uint32_t alpha) {
         DrawTexels<4>(texture, offset, stepX, stepY, width, height, dst, dstStride,
                       [color, alpha](const uint8_t *texel, uint32_t &pixel) {
@@ -135,6 +135,10 @@ namespace {
     bool gAllowX64v2 = true;
 #endif
 
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+    bool gAllowX64v3 = true;
+#endif
+
 } // end of namespace
 
 #if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
@@ -145,6 +149,14 @@ GlyphDraw::AllowX64v2(bool allow) {
 }
 #endif
 
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+//-------------------------------------
+void
+GlyphDraw::AllowX64v3(bool allow) {
+    gAllowX64v3 = allow;
+}
+#endif
+
 //-------------------------------------
 GlyphDraw::DrawGlyphFunction
 GlyphDraw::GetScalarDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
@@ -152,22 +164,30 @@ GlyphDraw::GetScalarDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
         return opaque ? DrawAlpha8Opaque : DrawAlpha8;
     }
 
-    return opaque ? DrawBgraOpaque : DrawBgra;
+    return opaque ? DrawBGRAOpaque : DrawBGRA;
 }
 
 //-------------------------------------
 GlyphDraw::DrawGlyphFunction
 GlyphDraw::GetDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
-#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2)
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+    if (gAllowX64v3 && CpuX86::HasX64v3()) {
+        return GetX64v3DrawGlyphFunction(bytesPerTexel, opaque);
+    }
+#endif
+
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V3)
+    return GetX64v3DrawGlyphFunction(bytesPerTexel, opaque);
+#elif defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2)
     return GetX64v2DrawGlyphFunction(bytesPerTexel, opaque);
 #elif defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
     if (gAllowX64v2 && CpuX86::HasX64v2()) {
         return GetX64v2DrawGlyphFunction(bytesPerTexel, opaque);
     }
 
-    return GetSse2DrawGlyphFunction(bytesPerTexel, opaque);
+    return GetSSE2DrawGlyphFunction(bytesPerTexel, opaque);
 #elif defined(FONTRENDERER_SSE2)
-    return GetSse2DrawGlyphFunction(bytesPerTexel, opaque);
+    return GetSSE2DrawGlyphFunction(bytesPerTexel, opaque);
 #elif defined(FONTRENDERER_NEON)
     return GetNeonDrawGlyphFunction(bytesPerTexel, opaque);
 #else

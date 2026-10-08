@@ -99,6 +99,10 @@ namespace {
 #if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_X86_64_V2)
         { "BaselineSse2",               Baseline::DrawSse2                },
 #endif
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
+        // Only on a processor with x86-64-v2.
+        { "BaselineX64v2",              Baseline::DrawX64v2               },
+#endif
 #if defined(FONTRENDERER_SSE2)
         { "RoundOnceSse2Premultiplied", RoundOnceSse2Premultiplied::Draw  },
         // Sse2PerCase is the SSE2 code the library had before; Sse2Overlap does what it has now.
@@ -133,7 +137,7 @@ namespace {
         // { "Sse2OverlapPixman",          Sse2Overlap::DrawPixman           },
         // { "Sse2OverlapUprightApart",    Sse2Overlap::DrawUprightApart     },
         // { "Sse2OverlapOctets",          Sse2Overlap::DrawOctets           },
-        // { "Sse2OverlapBgraTint",        Sse2Overlap::DrawBgraTint         },
+        // { "Sse2OverlapBGRATint",        Sse2Overlap::DrawBGRATint         },
         // { "Sse2OverlapSkip",            Sse2Overlap::DrawSkip             },
         // { "Sse2OverlapBranchless",      Sse2Overlap::DrawBranchless       },
         // { "Sse2OverlapOpaque8",         Sse2Overlap::DrawOpaque8          },
@@ -156,6 +160,7 @@ namespace {
         { "X64v2NoMadd",                X64v2::DrawNoMadd                 },
         { "X64v2NoShuffle",             X64v2::DrawNoShuffle              },
         { "X64v2NoTest",                X64v2::DrawNoTest                 },
+        { "X64v2NoUnroll",              X64v2::DrawNoUnroll               },
         { "X64v2Sse2",                  X64v2::DrawSse2                   },
         { "X64v2Widths",                X64v2::DrawWidths                 },
         { "X64v2BandWidths",            X64v2::DrawBandWidths             },
@@ -170,6 +175,24 @@ namespace {
         // measure the others in less time.
         // { "X64v2Pairs",                 X64v2::DrawPairs                  },
         // { "X64v2WidthsPairs",           X64v2::DrawWidthsPairs            },
+#endif
+#if defined(FONTRENDERER_BENCHMARK_X64V3)
+        // X64v3Vex is X64v2 built for x86-64-v3. Avx2 is the same code with the color in registers of 256 bits, and each
+        // of the others draws one kind of glyph 8 pixels at a time.
+        { "X64v3Vex",                   X64v3Vex::Draw                    },
+        { "X64v3VexNoUnroll",           X64v3Vex::DrawNoUnroll            },
+        { "Avx2",                       Avx2::Draw                        },
+        { "Avx2Rows",                   Avx2::DrawRows                    },
+        { "Avx2Wide",                   Avx2::DrawWide                    },
+        { "Avx2Tall",                   Avx2::DrawTall                    },
+        // The same with a color of 128 bits for the blocks of 4 pixels. Avx2Split draws as X64v3Vex.
+        { "Avx2Split",                  Avx2::DrawSplit                   },
+        { "Avx2SplitRowsWide",          Avx2::DrawSplitRowsWide           },
+        { "Avx2SplitRowsTall",          Avx2::DrawSplitRowsTall           },
+        // NoUnroll keeps clang from unrolling the loop over the blocks of a row. GCC and MSVC build the same code.
+        { "Avx2SplitRowsWideNoUnroll",  Avx2::DrawSplitRowsWideNoUnroll   },
+        { "Avx2SplitRowsTallNoUnroll",  Avx2::DrawSplitRowsTallNoUnroll   },
+        { "Avx2SplitRowsHybridNoUnroll", Avx2::DrawSplitRowsHybridNoUnroll },
 #endif
 #if defined(FONTRENDERER_NEON)
         // NeonPerCase8 is the NEON code the library had before; NeonPacked does what it has now.
@@ -194,7 +217,7 @@ namespace {
         // The scalar variants that leave the same pixels as DrawText. Off to measure the SSE2 ones in less time.
         // { "MoreJumpsPerGlyph",          MoreJumpsPerGlyph::Draw           },
         // { "MoreJumpsPerCase",           MoreJumpsPerCase::Draw            },
-        // { "MoreJumpsPerCaseAlpha8",     MoreJumpsPerCaseAlpha8::Draw      },
+        { "MoreJumpsPerCaseAlpha8",     MoreJumpsPerCaseAlpha8::Draw      },
         // { "MoreJumpsPremultiplied",     MoreJumpsPremultiplied::Draw      },
         // { "MoreJumpsNoInline",          MoreJumpsNoInline::Draw           },
         // { "MoreJumpsNoInlineCast",      MoreJumpsNoInlineCast::Draw       },
@@ -557,9 +580,11 @@ namespace {
             const Variant *variant = FindVariant(argv[i]);
             if (variant == nullptr) {
                 fprintf(stderr, "Unknown variant: %s\n", argv[i]);
-                return false;
+                //return false;
             }
-            named.push_back(variant);
+            else {
+                named.push_back(variant);
+            }
         }
 
         if (named.empty()) {

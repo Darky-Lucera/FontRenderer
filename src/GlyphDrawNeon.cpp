@@ -608,7 +608,7 @@ namespace {
     //---------------------------------
     template <bool kOpaque>
     FONTRENDERER_ALWAYS_INLINE void
-    DrawBgraTexel(const Color &color, const uint8_t *texel, uint32_t *dst) {
+    DrawBGRATexel(const Color &color, const uint8_t *texel, uint32_t *dst) {
         const uint32_t t = Load32(texel);
         if (t >> 24) {
             const uint8x8_t  texels = vreinterpret_u8_u32(vdup_n_u32(t));
@@ -713,7 +713,7 @@ namespace {
     //---------------------------------
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE void
-    DrawBgraRow(const Color &color, const uint8_t *src, uint32_t *dst, int32_t w) {
+    DrawBGRARow(const Color &color, const uint8_t *src, uint32_t *dst, int32_t w) {
         uint8_t *bytes = reinterpret_cast<uint8_t *>(dst);
         if (w >= 8) {
             const size_t full = size_t(w) & ~size_t(7);
@@ -746,7 +746,7 @@ namespace {
         }
         else {
             while (w > 0) {
-                DrawBgraTexel<kOpaque>(color, src, dst);
+                DrawBGRATexel<kOpaque>(color, src, dst);
                 src += 4;
                 w--;
                 dst++;
@@ -758,35 +758,35 @@ namespace {
     //---------------------------------
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE void
-    DrawBgraRows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
+    DrawBGRARows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
                  uint32_t *dst, uint32_t dstStride) {
         if (stepX != 1) {
             for (int32_t y = 0; y < height; ++y) {
                 uint32_t *row = &dst[size_t(y) * dstStride];
                 for (int32_t x = 0; x < width; ++x) {
-                    DrawBgraTexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
+                    DrawBGRATexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
                 }
             }
             return;
         }
 
         for (int32_t y = 0; y < height; ++y) {
-            DrawBgraRow<kOpaque, kSkip>(color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride], width);
+            DrawBGRARow<kOpaque, kSkip>(color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride], width);
         }
     }
 
     //---------------------------------
     template <bool kOpaque>
     FONTRENDERER_NO_INLINE void
-    DrawBgra(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+    DrawBGRA(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
              uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t /*alpha*/) {
         const Color   color = MakeColor(premultiplied);
         const uint8_t *src  = &texture[offset * 4];
         if (UsesShortcuts(width)) {
-            DrawBgraRows<kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
+            DrawBGRARows<kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
         }
         else {
-            DrawBgraRows<kOpaque, false>(color, src, stepX, stepY, width, height, dst, dstStride);
+            DrawBGRARows<kOpaque, false>(color, src, stepX, stepY, width, height, dst, dstStride);
         }
     }
 
@@ -799,7 +799,7 @@ GlyphDraw::GetNeonDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
         return opaque ? DrawAlpha8<true> : DrawAlpha8<false>;
     }
 
-    return opaque ? DrawBgra<true> : DrawBgra<false>;
+    return opaque ? DrawBGRA<true> : DrawBGRA<false>;
 }
 
 #endif

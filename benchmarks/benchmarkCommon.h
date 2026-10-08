@@ -80,7 +80,7 @@ namespace Benchmark {
         // The 4 bytes of a texel as 0xAARRGGBB, on any processor.
         //-----------------------------
         inline uint32_t
-        LoadBgra(const uint8_t *texel) {
+        LoadBGRA(const uint8_t *texel) {
             return uint32_t(texel[0]) | (uint32_t(texel[1]) << 8) | (uint32_t(texel[2]) << 16) | (uint32_t(texel[3]) << 24);
         }
 
@@ -137,6 +137,9 @@ namespace Benchmark {
         void    DrawScalar(Scenario &scenario, uint32_t *dst);
 #if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_X86_64_V2)
         void    DrawSse2(Scenario &scenario, uint32_t *dst);
+#endif
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
+        void    DrawX64v2(Scenario &scenario, uint32_t *dst);
 #endif
     }
     namespace MoreJumpsPerGlyph {
@@ -247,7 +250,7 @@ namespace Benchmark {
         void    DrawPixman(Scenario &scenario, uint32_t *dst);
         void    DrawUprightApart(Scenario &scenario, uint32_t *dst);
         void    DrawOctets(Scenario &scenario, uint32_t *dst);
-        void    DrawBgraTint(Scenario &scenario, uint32_t *dst);
+        void    DrawBGRATint(Scenario &scenario, uint32_t *dst);
         void    DrawSkip(Scenario &scenario, uint32_t *dst);
         void    DrawBranchless(Scenario &scenario, uint32_t *dst);
         void    DrawOpaque8(Scenario &scenario, uint32_t *dst);
@@ -302,6 +305,7 @@ namespace Benchmark {
         void    DrawNoMadd(Scenario &scenario, uint32_t *dst);
         void    DrawNoShuffle(Scenario &scenario, uint32_t *dst);
         void    DrawNoTest(Scenario &scenario, uint32_t *dst);
+        void    DrawNoUnroll(Scenario &scenario, uint32_t *dst);
         void    DrawSse2(Scenario &scenario, uint32_t *dst);
         void    DrawWidths(Scenario &scenario, uint32_t *dst);
         void    DrawPairs(Scenario &scenario, uint32_t *dst);
@@ -317,6 +321,35 @@ namespace Benchmark {
         void    DrawWidthsBandWidths(Scenario &scenario, uint32_t *dst);
     }
 #endif
+#endif
+
+    // The variants with the instructions of x86-64-v3, which CMake only builds when the compiler can target that level.
+#if defined(FONTRENDERER_BENCHMARK_X64V3)
+    namespace X64v3Vex {
+        void    Draw(Scenario &scenario, uint32_t *dst);
+        void    DrawNoMadd(Scenario &scenario, uint32_t *dst);
+        void    DrawNoShuffle(Scenario &scenario, uint32_t *dst);
+        void    DrawNoTest(Scenario &scenario, uint32_t *dst);
+        void    DrawNoUnroll(Scenario &scenario, uint32_t *dst);
+        void    DrawSse2(Scenario &scenario, uint32_t *dst);
+        void    DrawWidths(Scenario &scenario, uint32_t *dst);
+        void    DrawPairs(Scenario &scenario, uint32_t *dst);
+        void    DrawWidthsPairs(Scenario &scenario, uint32_t *dst);
+        void    DrawBandWidths(Scenario &scenario, uint32_t *dst);
+        void    DrawWidthsBandWidths(Scenario &scenario, uint32_t *dst);
+    }
+    namespace Avx2 {
+        void    Draw(Scenario &scenario, uint32_t *dst);
+        void    DrawRows(Scenario &scenario, uint32_t *dst);
+        void    DrawWide(Scenario &scenario, uint32_t *dst);
+        void    DrawTall(Scenario &scenario, uint32_t *dst);
+        void    DrawSplit(Scenario &scenario, uint32_t *dst);
+        void    DrawSplitRowsWide(Scenario &scenario, uint32_t *dst);
+        void    DrawSplitRowsTall(Scenario &scenario, uint32_t *dst);
+        void    DrawSplitRowsWideNoUnroll(Scenario &scenario, uint32_t *dst);
+        void    DrawSplitRowsTallNoUnroll(Scenario &scenario, uint32_t *dst);
+        void    DrawSplitRowsHybridNoUnroll(Scenario &scenario, uint32_t *dst);
+    }
 #endif
 
     // The variants with NEON, which are only built for a processor that has it.

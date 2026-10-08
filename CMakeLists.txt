@@ -34,6 +34,22 @@ option(FONTRENDERER_DISABLE_SIMD     "Draw only with the scalar code, no SSE2 or
 # it only uses when cpuid says that the processor has the level. Only 64-bit x86 builds use the option.
 option(FONTRENDERER_X86_64_V2        "Build the library for x86-64-v2; OFF only uses it in the drawing, if the processor has it" ON)
 
+# x86-64-v3 adds AVX, AVX2, BMI1, BMI2, FMA, F16C, LZCNT and MOVBE to x86-64-v2. Intel processors have it since Haswell
+# (2013), except some Pentium and Celeron, and AMD ones since Excavator (2015). It is common in 2026, but less than
+# x86-64-v2, so the option is off.
+#
+# The library has a copy of the drawing for x86-64-v3, which draws a glyph 8 pixels wide or more with registers of 256
+# bits. Against the drawing for x86-64-v2, on three Intel processors (Haswell, Comet Lake and Alder Lake) with MSVC, GCC
+# and clang, the glyphs of the measured texts drew between 4% slower and 12% faster at 14 pixels, between 3% and 35%
+# faster at 24, between 11% and 50% at 40, and between 29% and 53% with BGRA32. Building the whole library for the
+# level added little in the measures, and lets the compiler use FMA in the rasterizers, which can change a glyph by one
+# level in some pixel.
+#
+# ON builds the whole library for x86-64-v3, whatever FONTRENDERER_X86_64_V2 says, and stops the program at start, with a
+# message, on a processor without the level. OFF builds that copy for x86-64-v3 alone, and the library only uses it
+# when cpuid says that the processor has the level. Only 64-bit x86 builds use the option.
+option(FONTRENDERER_X86_64_V3        "Build the library for x86-64-v3; OFF only uses it in the drawing, if the processor has it" OFF)
+
 if (FONTRENDERER_USE_STB OR FONTRENDERER_USE_LIBSCHRIFT OR FONTRENDERER_USE_FREETYPE)
     set(FONTRENDERER_HAS_RASTERIZER ON)
 else()
@@ -147,7 +163,7 @@ set(SRC_FontRenderer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/UTF8_Utils.h
 )
 
-# Without an x86 processor GlyphDrawSse2.cpp compiles to nothing, and the tool that builds the library on macOS
+# Without an x86 processor GlyphDrawSSE2.cpp compiles to nothing, and the tool that builds the library on macOS
 # warns about an object file without symbols. The check only passes when no architecture of the build is x86:
 # a universal build of macOS, which has both, still needs the file.
 include(CheckCXXSourceCompiles)
@@ -179,7 +195,33 @@ if (NOT FONTRENDERER_TARGET_WITHOUT_X86 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
     endif()
 endif()
 
-if (FONTRENDERER_X86_64_V2_FLAGS AND (FONTRENDERER_X86_64_V2 OR NOT FONTRENDERER_DISABLE_SIMD))
+# The same for x86-64-v3. MSVC has no option for the whole level: /arch:AVX2 also lets it use FMA and BMI.
+set(FONTRENDERER_X86_64_V3_FLAGS "")
+if (FONTRENDERER_X86_64_V2_FLAGS)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        set(FONTRENDERER_X86_64_V3_CANDIDATE "/arch:AVX2")
+    elseif (APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES ";")
+        set(FONTRENDERER_X86_64_V3_CANDIDATE "-Xarch_x86_64;-march=x86-64-v3")
+    else()
+        set(FONTRENDERER_X86_64_V3_CANDIDATE "-march=x86-64-v3")
+    endif()
+    check_cxx_compiler_flag("${FONTRENDERER_X86_64_V3_CANDIDATE}" FONTRENDERER_HAS_X86_64_V3_FLAG)
+    if (FONTRENDERER_HAS_X86_64_V3_FLAG)
+        set(FONTRENDERER_X86_64_V3_FLAGS "${FONTRENDERER_X86_64_V3_CANDIDATE}")
+    else()
+        message(STATUS "FontRenderer: the compiler does not take ${FONTRENDERER_X86_64_V3_CANDIDATE}, so there is no code for x86-64-v3")
+    endif()
+endif()
+
+# The level of the whole library: v3, v2, or empty for the default x86-64 level.
+set(FONTRENDERER_LIBRARY_LEVEL "")
+if (FONTRENDERER_X86_64_V3 AND FONTRENDERER_X86_64_V3_FLAGS)
+    set(FONTRENDERER_LIBRARY_LEVEL "v3")
+elseif (FONTRENDERER_X86_64_V2 AND FONTRENDERER_X86_64_V2_FLAGS)
+    set(FONTRENDERER_LIBRARY_LEVEL "v2")
+endif()
+
+if (FONTRENDERER_X86_64_V2_FLAGS AND (FONTRENDERER_LIBRARY_LEVEL OR NOT FONTRENDERER_DISABLE_SIMD))
     list(APPEND SRC_FontRenderer
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CpuX86.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CpuX86.h
@@ -188,21 +230,21 @@ endif()
 
 if (NOT FONTRENDERER_DISABLE_SIMD AND NOT FONTRENDERER_TARGET_WITHOUT_X86)
     list(APPEND SRC_FontRenderer
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawSse2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawSSE2.cpp
     )
     if (FONTRENDERER_X86_64_V2_FLAGS)
         list(APPEND SRC_FontRenderer
             ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawX64v2.cpp
         )
-        # GlyphDrawX64v2.cpp includes GlyphDrawSse2.cpp. Built in one unity file, both would define the same functions.
+        # GlyphDrawX64v2.cpp includes GlyphDrawSSE2.cpp. Built in one unity file, both would define the same functions.
         set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawX64v2.cpp
         PROPERTIES
             SKIP_UNITY_BUILD_INCLUSION ON
         )
-        if (FONTRENDERER_X86_64_V2)
-            # With the whole library built for x86-64-v2, GlyphDrawSse2.cpp builds nothing by itself: GlyphDrawX64v2.cpp
-            # includes it.
-            set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawSse2.cpp
+        if (FONTRENDERER_LIBRARY_LEVEL)
+            # With the whole library built for x86-64-v2 or later, GlyphDrawSSE2.cpp builds nothing by itself:
+            # GlyphDrawX64v2.cpp includes it.
+            set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawSSE2.cpp
             PROPERTIES
                 HEADER_FILE_ONLY ON
             )
@@ -210,6 +252,22 @@ if (NOT FONTRENDERER_DISABLE_SIMD AND NOT FONTRENDERER_TARGET_WITHOUT_X86)
             set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawX64v2.cpp
             PROPERTIES
                 COMPILE_OPTIONS "${FONTRENDERER_X86_64_V2_FLAGS}"
+            )
+        endif()
+    endif()
+    if (FONTRENDERER_X86_64_V3_FLAGS)
+        list(APPEND SRC_FontRenderer
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawX64v3.cpp
+        )
+        # Like GlyphDrawX64v2.cpp, it includes GlyphDrawSSE2.cpp.
+        set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawX64v3.cpp
+        PROPERTIES
+            SKIP_UNITY_BUILD_INCLUSION ON
+        )
+        if (NOT FONTRENDERER_LIBRARY_LEVEL STREQUAL "v3")
+            set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawX64v3.cpp
+            PROPERTIES
+                COMPILE_OPTIONS "${FONTRENDERER_X86_64_V3_FLAGS}"
             )
         endif()
     endif()
@@ -334,24 +392,40 @@ if (FONTRENDERER_DISABLE_SIMD)
 endif()
 
 # Public, so that the tests and the benchmark know which drawing functions GlyphDraw.h declares. Platform.h explains
-# both macros.
-if (FONTRENDERER_X86_64_V2_FLAGS)
-    if (FONTRENDERER_X86_64_V2)
-        target_compile_options(fontRenderer
-        PRIVATE
-            ${FONTRENDERER_X86_64_V2_FLAGS}
-        )
+# the macros.
+if (FONTRENDERER_LIBRARY_LEVEL STREQUAL "v3")
+    target_compile_options(fontRenderer
+    PRIVATE
+        ${FONTRENDERER_X86_64_V3_FLAGS}
+    )
 
-        target_compile_definitions(fontRenderer
-        PUBLIC
-            FONTRENDERER_X86_64_V2
-        )
-    elseif (NOT FONTRENDERER_DISABLE_SIMD)
-        target_compile_definitions(fontRenderer
-        PUBLIC
-            FONTRENDERER_X86_64_V2_AT_RUNTIME
-        )
-    endif()
+    target_compile_definitions(fontRenderer
+    PUBLIC
+        FONTRENDERER_X86_64_V2
+        FONTRENDERER_X86_64_V3
+    )
+elseif (FONTRENDERER_LIBRARY_LEVEL STREQUAL "v2")
+    target_compile_options(fontRenderer
+    PRIVATE
+        ${FONTRENDERER_X86_64_V2_FLAGS}
+    )
+
+    target_compile_definitions(fontRenderer
+    PUBLIC
+        FONTRENDERER_X86_64_V2
+    )
+elseif (FONTRENDERER_X86_64_V2_FLAGS AND NOT FONTRENDERER_DISABLE_SIMD)
+    target_compile_definitions(fontRenderer
+    PUBLIC
+        FONTRENDERER_X86_64_V2_AT_RUNTIME
+    )
+endif()
+
+if (FONTRENDERER_X86_64_V3_FLAGS AND NOT FONTRENDERER_LIBRARY_LEVEL STREQUAL "v3" AND NOT FONTRENDERER_DISABLE_SIMD)
+    target_compile_definitions(fontRenderer
+    PUBLIC
+        FONTRENDERER_X86_64_V3_AT_RUNTIME
+    )
 endif()
 
 #--------------------------------------
@@ -432,6 +506,20 @@ if (FONTRENDERER_BUILD_TESTS)
     fontrenderer_add_test(unitTests tests
         ${SRC_UnitTests}
     )
+
+    # Some tests rasterize with their own copy of a backend and expect the same pixels. With fast floating point, a
+    # build for x86-64-v3 may fuse a multiplication and an addition into FMA, and give another value in some pixel.
+    if (FONTRENDERER_LIBRARY_LEVEL STREQUAL "v3")
+        target_compile_options(unitTests
+        PRIVATE
+            ${FONTRENDERER_X86_64_V3_FLAGS}
+        )
+    elseif (FONTRENDERER_LIBRARY_LEVEL STREQUAL "v2")
+        target_compile_options(unitTests
+        PRIVATE
+            ${FONTRENDERER_X86_64_V2_FLAGS}
+        )
+    endif()
 
     # The tests render with FreeType itself, to check that FontFT draws the same.
     if (FONTRENDERER_USE_FREETYPE)
@@ -519,6 +607,25 @@ if (FONTRENDERER_BUILD_BENCHMARKS AND FONTRENDERER_HAS_RASTERIZER)
         set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/X64v2.cpp
         PROPERTIES
             COMPILE_OPTIONS "${FONTRENDERER_X64V2_FLAG}"
+        )
+    endif()
+
+    # The same for the files of the variants for x86-64-v3.
+    set(FONTRENDERER_X64V3_FLAG "")
+    if (NOT FONTRENDERER_DISABLE_SIMD)
+        set(FONTRENDERER_X64V3_FLAG "${FONTRENDERER_X86_64_V3_FLAGS}")
+    endif()
+
+    if (FONTRENDERER_X64V3_FLAG)
+        list(APPEND SRC_Benchmarks
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/X64v3Vex.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Avx2.cpp
+        )
+        set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/X64v3Vex.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Avx2.cpp
+        PROPERTIES
+            COMPILE_OPTIONS "${FONTRENDERER_X64V3_FLAG}"
         )
     endif()
 
@@ -617,6 +724,13 @@ if (FONTRENDERER_BUILD_BENCHMARKS AND FONTRENDERER_HAS_RASTERIZER)
         )
     endif()
 
+    if (FONTRENDERER_X64V3_FLAG)
+        target_compile_definitions(benchmarkDraw
+        PRIVATE
+            FONTRENDERER_BENCHMARK_X64V3
+        )
+    endif()
+
     if (FONTRENDERER_ALIGN_FLAGS)
         target_compile_definitions(benchmarkDraw
         PRIVATE
@@ -626,6 +740,31 @@ if (FONTRENDERER_BUILD_BENCHMARKS AND FONTRENDERER_HAS_RASTERIZER)
 
     if (DJGPP)
         set_target_properties(benchmarkDraw PROPERTIES OUTPUT_NAME "benchdrw")
+    endif()
+
+    # How long Font takes to render the glyphs, which benchmarkDraw leaves out.
+    if (FONTRENDERER_HAS_RASTERIZER)
+        add_executable(benchmarkRaster
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkRaster.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkSystem.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkSystem.h
+        )
+
+        fontrenderer_setup_target(benchmarkRaster)
+
+        target_compile_definitions(benchmarkRaster
+        PRIVATE
+            FONT_RENDERER_BENCHMARK_RESOURCES="${FONTRENDERER_BENCHMARK_RESOURCES}"
+        )
+
+        target_link_libraries(benchmarkRaster
+        PRIVATE
+            fontRenderer
+        )
+
+        if (DJGPP)
+            set_target_properties(benchmarkRaster PROPERTIES OUTPUT_NAME "benchrst")
+        endif()
     endif()
 endif()
 

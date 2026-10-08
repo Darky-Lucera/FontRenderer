@@ -255,7 +255,7 @@ namespace Sse2RoundOnce {
 
     //---------------------------------
     void
-    DrawBgra(Scenario &scenario, uint32_t *dst) {
+    DrawBGRA(Scenario &scenario, uint32_t *dst) {
         Color32 fontColor;
         fontColor.color = scenario.color;
 
@@ -290,7 +290,7 @@ namespace Sse2RoundOnce {
             DrawAlpha8(scenario, dst);
         }
         else {
-            DrawBgra(scenario, dst);
+            DrawBGRA(scenario, dst);
         }
     }
 

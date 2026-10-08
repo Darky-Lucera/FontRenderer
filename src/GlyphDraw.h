@@ -48,7 +48,7 @@ namespace GlyphDraw {
     DrawGlyphFunction   GetScalarDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
 
 #if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_X86_64_V2)
-    DrawGlyphFunction   GetSse2DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
+    DrawGlyphFunction   GetSSE2DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
 #endif
 
 #if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
@@ -60,6 +60,14 @@ namespace GlyphDraw {
     // which they are unless this is called with false. The tests do it, to check the choice of the SSE2 functions on
     // any processor.
     void                AllowX64v2(bool allow);
+#endif
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V3) || defined(FONTRENDERER_X86_64_V3_AT_RUNTIME))
+    // The functions built for x86-64-v3. Only a processor with that level can run them.
+    DrawGlyphFunction   GetX64v3DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
+#endif
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+    // As AllowX64v2, for the functions above.
+    void                AllowX64v3(bool allow);
 #endif
 
 #if defined(FONTRENDERER_NEON)

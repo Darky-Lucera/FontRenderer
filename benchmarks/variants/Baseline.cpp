@@ -5,7 +5,8 @@
 // The functions FontBase::DrawText draws the glyphs with, called as it calls them: chosen once, and called for each
 // glyph. They are the ones of the library, not a copy, so Baseline is always what the library does without the
 // layout and the clipping. Draw uses the fastest the library was built with that this processor can run, which can be
-// the copy for x86-64-v2. DrawSse2 uses the SSE2 ones, when the library has them, and DrawScalar the scalar ones.
+// a copy for x86-64-v2 or x86-64-v3. DrawSse2 uses the SSE2 ones, when the library has them, DrawX64v2 the copy for
+// x86-64-v2, when the library has it and the processor can run it, and DrawScalar the scalar ones.
 // To try a change, start from Sse2Overlap.cpp, whose Draw does what the SSE2 code does, from X64v2.cpp, whose Draw does
 // what the copy for x86-64-v2 does, from NeonPacked.cpp, whose Draw does what the NEON code does, or from
 // MoreJumpsPerGlyph.cpp, a copy of the scalar code.
@@ -61,7 +62,15 @@ namespace Baseline {
     //---------------------------------
     void
     DrawSse2(Scenario &scenario, uint32_t *dst) {
-        DrawQuads(scenario, dst, GlyphDraw::GetSse2DrawGlyphFunction(GetBytesPerTexel(scenario), (scenario.color >> 24) == 255));
+        DrawQuads(scenario, dst, GlyphDraw::GetSSE2DrawGlyphFunction(GetBytesPerTexel(scenario), (scenario.color >> 24) == 255));
+    }
+#endif
+
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
+    //---------------------------------
+    void
+    DrawX64v2(Scenario &scenario, uint32_t *dst) {
+        DrawQuads(scenario, dst, GlyphDraw::GetX64v2DrawGlyphFunction(GetBytesPerTexel(scenario), (scenario.color >> 24) == 255));
     }
 #endif
 

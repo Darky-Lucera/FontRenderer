@@ -42,13 +42,13 @@ font.DrawText(text, fontSize, color32, bufferDest, bufferDestStride, posX, posY)
 
 **Note**: Each glyph is rendered only once per fontSize, so changing any antialias setting, the glyph spacing or the glyph padding discards the glyphs already rendered.
 
-**Note**: By default the packer can rotate a glyph to fit more glyphs in the texture. With the SSE2 and NEON code, a rotated glyph usually draws more slowly: between 6 and 30 % slower in our benchmarks, on x86 with GCC and MSVC, an Apple M1, a Cortex-A78 and a Cortex-A55. There are exceptions: on x86, glyphs of 96 pixels drew faster rotated, and so did glyphs of 24 and 40 pixels on the Cortex-A55. The scalar code draws both at the same speed. If drawing speed matters more than texture space, call `SetAllowRotation(false)` before rendering the glyphs.
+**Note**: By default the packer can rotate a glyph to fit more glyphs in the texture. With the SSE2 and NEON code, a rotated glyph usually draws more slowly: between 6 and 30 % slower in our benchmarks, on x86 with GCC and MSVC, an Apple M1, a Cortex-A78 and a Cortex-A55. There are exceptions: on x86, glyphs of 96 pixels drew faster rotated, and so did glyphs of 24 and 40 pixels on the Cortex-A55. The scalar code draws both at the same speed. With the x86-64-v3 code, rotated and upright glyphs have not been compared. If drawing speed matters more than texture space, call `SetAllowRotation(false)` before rendering the glyphs.
 
 **Note**: `DrawText` also blends the alpha of the buffer, as the *over* operator of Porter and Duff does. An opaque buffer stays opaque. On a transparent buffer, the result has premultiplied alpha: blue, green and red are multiplied by the alpha. A buffer that already has translucent pixels must have premultiplied alpha too. The color of the text is not premultiplied.
 
 ### How a pixel is blended
 
-The scalar, SSE2, x86-64-v2 and NEON code leave exactly the same pixels.
+The scalar, SSE2, x86-64-v2, x86-64-v3 and NEON code leave exactly the same pixels.
 Each channel is a value from 0 to 255, and each operation below works on every channel.
 
 - `tintColor` is the color of the text, not premultiplied.
@@ -56,7 +56,6 @@ Each channel is a value from 0 to 255, and each operation below works on every c
   - A texel of an `Alpha8` texture is a coverage: `(coverage, coverage, coverage, coverage)`.
   - A texel of a `BGRA32Premultiplied` texture is: `(round(r * coverage / 255), round(g * coverage / 255), round(b * coverage / 255), coverage)`.
 - `dest` is the pixel of the buffer. In an opaque buffer, as a screen buffer usually is, premultiplied alpha changes nothing. A buffer with translucent pixels must have premultiplied alpha, and it keeps it.
-
 
 ```text
 premultipliedTint.rgb = round(tintColor.rgb * tintColor.a / 255)
@@ -211,9 +210,10 @@ You have two options:
   |`FONTRENDERER_USE_BAKED`|`ON`|The backend that reads baked fonts, `FontBaked`|
   |`FONTRENDERER_DISABLE_SIMD`|`OFF`|Only the scalar drawing code. By default the text is drawn with SSE2 where the compiler may use it, always on x86 of 64 bits, and with NEON on ARM64|
   |`FONTRENDERER_X86_64_V2`|`ON`|Only for x86 of 64 bits. The whole library is built for x86-64-v2 (SSE3, SSSE3, SSE4.1, SSE4.2 and POPCNT), and it stops the program at start, with a message, on a processor without that level. `OFF` builds the library for the default x86-64 level, which includes SSE and SSE2, and draws the text with a copy for x86-64-v2 only when the processor has it. The gain is small: the glyphs draw about 6% faster. The comment of the option in `CMakeLists.txt` has the details|
+  |`FONTRENDERER_X86_64_V3`|`OFF`|Only for x86 of 64 bits. The library has a copy of the drawing for x86-64-v3 (AVX2). Against x86-64-v2, its glyphs draw between 4% slower and 12% faster at 14 pixels, between 11% and 50% faster at 40 pixels, and between 29% and 53% faster with BGRA32 textures. `OFF` uses that copy only when the processor has the level. `ON` builds the whole library for x86-64-v3, whatever `FONTRENDERER_X86_64_V2` says, and stops the program at start, with a message, on a processor without that level. The comment of the option in `CMakeLists.txt` has the details|
   |`FONTRENDERER_BUILD_EXAMPLES`|`ON` only when FontRenderer is the main project|The examples, which show every backend that is on. The [effects example](#the-effects-example) also needs `FONTRENDERER_USE_BAKED`. They download MiniFB, unless the project that adds FontRenderer already has a `minifb` target|
   |`FONTRENDERER_BUILD_TESTS`|`ON` only when FontRenderer is the main project|The unit tests|
-  |`FONTRENDERER_BUILD_BENCHMARKS`|`OFF`|The benchmark of the drawing code, `benchmarkDraw`. See [Benchmarks](#benchmarks)|
+  |`FONTRENDERER_BUILD_BENCHMARKS`|`OFF`|The benchmarks of the drawing code, `benchmarkDraw`, and of the rasterizers, `benchmarkRaster`. See [Benchmarks](#benchmarks)|
 
   At least one backend must be on. The library defines `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` and `FONTRENDERER_USE_BAKED` for each backend that is on, also for the code that uses the library. The header of each backend, like `FontSTB.h`, stops the build if its macro is not defined.
 
@@ -229,8 +229,9 @@ You have two options:
   - GlyphDraw.h
   - GlyphDraw.cpp
   - GlyphDrawNeon.cpp
-  - GlyphDrawSse2.cpp
+  - GlyphDrawSSE2.cpp
   - GlyphDrawX64v2.cpp (it builds nothing unless you define `FONTRENDERER_X86_64_V2` or `FONTRENDERER_X86_64_V2_AT_RUNTIME`, which `Platform.h` explains)
+  - GlyphDrawX64v3.cpp (it builds nothing unless you define `FONTRENDERER_X86_64_V3` or `FONTRENDERER_X86_64_V3_AT_RUNTIME`, which `Platform.h` explains, and must be built for x86-64-v3)
   - MappedFile.h
   - MappedFile.cpp
   - Platform.h
@@ -290,6 +291,16 @@ You have two options:
 
 ## Benchmarks
 
+The drawing code picks the fastest level that the processor has. On seven x86 processors (Intel, from a Westmere of 2010 to an Alder Lake of 2022) with MSVC, clang and GCC, the glyphs drew this many times faster than with the scalar code. Each number is the median of all the processors, compilers and runs. The Westmere ran a 32-bit Windows, so it only counts for SSE2:
+
+|Level|14 px|24 px|40 px|96 px|BGRA32 texture|
+|---|---|---|---|---|---|
+|SSE2|2.5|2.8|3.5|3.9|4.1|
+|x86-64-v2|2.6|2.9|3.7|4.0|4.3|
+|x86-64-v3|2.6|3.3|4.5|5.5|5.7|
+
+The larger the glyphs, the more the wider registers help. At 14 pixels each row of a glyph is short, so the three levels draw at about the same speed.
+
 `benchmarkDraw` measures how fast the text is drawn in 18 scenarios: Roboto at 14, 24, 40 and 96 pixels, with and without rotated glyphs, with an opaque and a translucent color, and the baked Lilita One with effects, which has a color texture. Build it in Release with `-DFONTRENDERER_BUILD_BENCHMARKS=ON`. It reads its fonts from `bin/resources`.
 
 ```text
@@ -299,6 +310,8 @@ benchmarkDraw [variant...] [--scenario text]... [--csv file]
 Without arguments it measures every variant in every scenario. `--scenario` keeps the scenarios whose name has the text; with several, a scenario must have all of them. `Reference` is `DrawText` itself, with the layout and the clipping. `Baseline` draws the same glyphs with the drawing functions of the library, and the other variants are versions of those functions, kept to compare ideas. It starts with the compiler and the processor, and for each variant it prints the median and the minimum time of 15 samples, its speed against `Baseline`, and whether it leaves the expected pixels.
 
 The scripts are in `benchmarks/scripts`. `benchmark.bat` on Windows and `benchmark.sh` on macOS and Linux run the benchmark of `bin` and save its results there, as text, CSV and an HTML page with charts. They pass their arguments to `benchmarkDraw`. The files are named after the system, the compiler, the architecture and the processor, like `benchmark_windows_gcc15_x64_i7-10850h.txt`, so that runs on other computers or with other compilers do not replace each other. [plot_benchmark.py](benchmarks/scripts/plot_benchmark.py) makes the HTML page, and it can also put several CSV files in one page to compare them. It only needs Python.
+
+`benchmarkRaster` measures how long each backend takes to render the glyphs, which `benchmarkDraw` leaves out: the 191 printable characters of ASCII and Latin-1, with Roboto and DejaVu Serif Condensed Bold Italic, at 14, 24, 40 and 96 pixels. For each case it prints the median and the minimum time of 15 samples, and a checksum of the texture, which tells whether two builds render the same pixels.
 
 On Windows, `benchmarkAndroid.bat` builds the benchmark for Android with the NDK and the CMake of the Android SDK, runs it on the phone that `adb` sees, and saves the results in `bin`. The phone needs USB debugging. While the benchmark runs, the script keeps the screen on and pins the benchmark to the fastest core that Android lets it use: with the screen off, phones slow down their big cores, and they move programs between big and small cores. `--core N` picks another core, and `--abi armeabi-v7a` builds for a phone of 32 bits.
 

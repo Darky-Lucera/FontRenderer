@@ -108,7 +108,7 @@ namespace MoreJumpsPerCase {
 
         //-----------------------------
         NO_INLINE void
-        DrawBgraOpaque(Scenario &scenario, uint32_t *dst) {
+        DrawBGRAOpaque(Scenario &scenario, uint32_t *dst) {
             const FontBase  &font            = *scenario.font;
             const uint8_t   *texture         = font.GetTexture();
             const size_t    textureWidth     = font.GetTextureWidth();
@@ -129,7 +129,7 @@ namespace MoreJumpsPerCase {
                     dstGlyph,
                     scenario.width,
                     [premultiplied](const uint8_t *texel, uint32_t &pixel) {
-                        // Reading the texel through a uint32_t pointer, here and in DrawBgra, is undefined behavior:
+                        // Reading the texel through a uint32_t pointer, here and in DrawBGRA, is undefined behavior:
                         // it breaks the aliasing rule, and it gives the channels in another order on a big-endian
                         // processor. It works with GCC and MSVC on x86. The line in the comment is the portable load.
                         if (texel[3] == 255) {
@@ -149,7 +149,7 @@ namespace MoreJumpsPerCase {
 
         //-----------------------------
         NO_INLINE void
-        DrawBgra(Scenario &scenario, uint32_t *dst) {
+        DrawBGRA(Scenario &scenario, uint32_t *dst) {
             const FontBase  &font            = *scenario.font;
             const uint8_t   *texture         = font.GetTexture();
             const size_t    textureWidth     = font.GetTextureWidth();
@@ -202,10 +202,10 @@ namespace MoreJumpsPerCase {
         }
         else {
             if (opaque) {
-                DrawBgraOpaque(scenario, dst);
+                DrawBGRAOpaque(scenario, dst);
             }
             else {
-                DrawBgra(scenario, dst);
+                DrawBGRA(scenario, dst);
             }
         }
     }

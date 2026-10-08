@@ -524,7 +524,7 @@ namespace NeonOverlap {
         //-----------------------------
         template <bool kOpaque, bool kSkip, bool kLd4>
         inline bool
-        DrawBgraShortcut(const Color &color, const uint8x8x4_t &texels, uint8_t *bytes) {
+        DrawBGRAShortcut(const Color &color, const uint8x8x4_t &texels, uint8_t *bytes) {
             if (kSkip == false) {
                 return false;
             }
@@ -544,7 +544,7 @@ namespace NeonOverlap {
         //-----------------------------
         template <bool kOpaque>
         inline void
-        DrawBgraTexel(const Color &color, const uint8_t *texel, uint32_t *dst) {
+        DrawBGRATexel(const Color &color, const uint8_t *texel, uint32_t *dst) {
             const uint32_t t = Load32(texel);
             if (t >> 24) {
                 const uint8x8_t  texels = vreinterpret_u8_u32(vdup_n_u32(t));
@@ -558,7 +558,7 @@ namespace NeonOverlap {
         //-----------------------------
         template <bool kOpaque, bool kSkip, bool kLd4>
         ALWAYS_INLINE void
-        DrawBgraRow(const Color &color, const uint8_t *src, uint32_t *dst, int32_t w) {
+        DrawBGRARow(const Color &color, const uint8_t *src, uint32_t *dst, int32_t w) {
             uint8_t *bytes = reinterpret_cast<uint8_t *>(dst);
             if (w >= 8) {
                 const size_t      last       = size_t(w - 8);
@@ -568,11 +568,11 @@ namespace NeonOverlap {
                 for (size_t x = 0; x < last; x += 8) {
                     uint8_t           *blockBytes = bytes + 4 * x;
                     const uint8x8x4_t texels      = Load8<kLd4>(src + 4 * x);
-                    if (DrawBgraShortcut<kOpaque, kSkip, kLd4>(color, texels, blockBytes) == false) {
+                    if (DrawBGRAShortcut<kOpaque, kSkip, kLd4>(color, texels, blockBytes) == false) {
                         Store8<kLd4>(blockBytes, BlendPlanes<kOpaque>(color, texels, texels.val[3], Load8<kLd4>(blockBytes)));
                     }
                 }
-                if (DrawBgraShortcut<kOpaque, kSkip, kLd4>(color, lastTexels, lastBytes) == false) {
+                if (DrawBGRAShortcut<kOpaque, kSkip, kLd4>(color, lastTexels, lastBytes) == false) {
                     Store8<kLd4>(lastBytes, BlendPlanes<kOpaque>(color, lastTexels, lastTexels.val[3], lastPixels));
                 }
             }
@@ -605,7 +605,7 @@ namespace NeonOverlap {
             }
             else {
                 while (w > 0) {
-                    DrawBgraTexel<kOpaque>(color, src, dst);
+                    DrawBGRATexel<kOpaque>(color, src, dst);
                     src += 4;
                     w--;
                     dst++;
@@ -616,16 +616,16 @@ namespace NeonOverlap {
         //-----------------------------
         template <bool kOpaque, bool kSkip, bool kLd4>
         ALWAYS_INLINE void
-        DrawBgraRows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRARows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
                      uint32_t *dst, uint32_t dstStride) {
             for (int32_t y = 0; y < height; ++y) {
                 uint32_t *row = &dst[size_t(y) * dstStride];
                 if (stepX == 1) {
-                    DrawBgraRow<kOpaque, kSkip, kLd4>(color, &src[size_t(y) * stepY * 4], row, width);
+                    DrawBGRARow<kOpaque, kSkip, kLd4>(color, &src[size_t(y) * stepY * 4], row, width);
                 }
                 else {
                     for (int32_t x = 0; x < width; ++x) {
-                        DrawBgraTexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
+                        DrawBGRATexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
                     }
                 }
             }
@@ -634,15 +634,15 @@ namespace NeonOverlap {
         //-----------------------------
         template <bool kOpaque, int32_t kSkipWidth, bool kLd4>
         NO_INLINE void
-        DrawBgraGlyph(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRAGlyph(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                       uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t /*alpha*/) {
             const Color   color = MakeColor(premultiplied);
             const uint8_t *src  = &texture[offset * 4];
             if (UsesShortcuts<kSkipWidth>(width)) {
-                DrawBgraRows<kOpaque, true, kLd4>(color, src, stepX, stepY, width, height, dst, dstStride);
+                DrawBGRARows<kOpaque, true, kLd4>(color, src, stepX, stepY, width, height, dst, dstStride);
             }
             else {
-                DrawBgraRows<kOpaque, false, kLd4>(color, src, stepX, stepY, width, height, dst, dstStride);
+                DrawBGRARows<kOpaque, false, kLd4>(color, src, stepX, stepY, width, height, dst, dstStride);
             }
         }
 
@@ -657,7 +657,7 @@ namespace NeonOverlap {
                 return opaque ? DrawAlpha8Glyph<true, kSkipWidth, kLd4, kBands> : DrawAlpha8Glyph<false, kSkipWidth, kLd4, kBands>;
             }
 
-            return opaque ? DrawBgraGlyph<true, kSkipWidth, kLd4> : DrawBgraGlyph<false, kSkipWidth, kLd4>;
+            return opaque ? DrawBGRAGlyph<true, kSkipWidth, kLd4> : DrawBGRAGlyph<false, kSkipWidth, kLd4>;
         }
 
         //-----------------------------

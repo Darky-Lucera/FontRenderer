@@ -249,7 +249,7 @@ namespace NeonPerCase {
         }
 
         //-----------------------------
-        struct BgraColor {
+        struct BGRAColor {
             uint8x8_t   color;          // The premultiplied color of the text, for 2 pixels
             uint8x8_t   spreadAlpha;
             bool        white;
@@ -260,7 +260,7 @@ namespace NeonPerCase {
         //-----------------------------
         template <bool kOpaque>
         inline void
-        DrawBgraTexel(const BgraColor &color, const uint8_t *texel, uint32_t *dst) {
+        DrawBGRATexel(const BGRAColor &color, const uint8_t *texel, uint32_t *dst) {
             const uint32_t t = Load32(texel);
             if (t >> 24) {
                 const uint8x8_t  texels = vreinterpret_u8_u32(vdup_n_u32(t));
@@ -294,7 +294,7 @@ namespace NeonPerCase {
         //-----------------------------
         template <bool kOpaque>
         inline void
-        DrawBgraBlock(const BgraColor &color, uint8x16_t texels, uint32_t *dst) {
+        DrawBGRABlock(const BGRAColor &color, uint8x16_t texels, uint32_t *dst) {
             if (IsTransparent(texels)) {
                 return;
             }
@@ -320,10 +320,10 @@ namespace NeonPerCase {
         //-----------------------------
         template <bool kOpaque, bool kTailBlock>
         inline void
-        DrawBgraRow(const BgraColor &color, const uint8_t *src, uint32_t *dst, int32_t w) {
+        DrawBGRARow(const BGRAColor &color, const uint8_t *src, uint32_t *dst, int32_t w) {
             const bool hasBlocks = w >= 4;
             while (w >= 4) {
-                DrawBgraBlock<kOpaque>(color, vld1q_u8(src), dst);
+                DrawBGRABlock<kOpaque>(color, vld1q_u8(src), dst);
                 w   -= 4;
                 dst += 4;
                 src += 16;
@@ -332,11 +332,11 @@ namespace NeonPerCase {
             if (kTailBlock && hasBlocks && w > 0) {
                 const int32_t    drawn  = 4 - w;
                 const uint8x16_t texels = vandq_u8(vld1q_u8(src - size_t(drawn) * 4), vld1q_u8(reinterpret_cast<const uint8_t *>(kKeepFrom[drawn])));
-                DrawBgraBlock<kOpaque>(color, texels, dst - drawn);
+                DrawBGRABlock<kOpaque>(color, texels, dst - drawn);
             }
             else {
                 while (w > 0) {
-                    DrawBgraTexel<kOpaque>(color, src, dst);
+                    DrawBGRATexel<kOpaque>(color, src, dst);
                     src += 4;
                     w--;
                     dst++;
@@ -348,9 +348,9 @@ namespace NeonPerCase {
         //-----------------------------
         template <bool kOpaque, bool kTailBlock>
         NO_INLINE void
-        DrawBgraGlyph(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRAGlyph(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                       uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t /*alpha*/) {
-            BgraColor color;
+            BGRAColor color;
             color.color       = vreinterpret_u8_u32(vdup_n_u32(premultiplied));
             color.spreadAlpha = vld1_u8(kSpreadAlpha);
             color.white       = premultiplied == 0xffffffffu;
@@ -359,11 +359,11 @@ namespace NeonPerCase {
             for (int32_t y = 0; y < height; ++y) {
                 uint32_t *row = &dst[size_t(y) * dstStride];
                 if (stepX == 1) {
-                    DrawBgraRow<kOpaque, kTailBlock>(color, &src[size_t(y) * stepY * 4], row, width);
+                    DrawBGRARow<kOpaque, kTailBlock>(color, &src[size_t(y) * stepY * 4], row, width);
                 }
                 else {
                     for (int32_t x = 0; x < width; ++x) {
-                        DrawBgraTexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
+                        DrawBGRATexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
                     }
                 }
             }
@@ -379,7 +379,7 @@ namespace NeonPerCase {
                 return opaque ? DrawAlpha8Glyph<true, kBlock8, kTailBlock> : DrawAlpha8Glyph<false, kBlock8, kTailBlock>;
             }
 
-            return opaque ? DrawBgraGlyph<true, kTailBlock> : DrawBgraGlyph<false, kTailBlock>;
+            return opaque ? DrawBGRAGlyph<true, kTailBlock> : DrawBGRAGlyph<false, kTailBlock>;
         }
 
         //-----------------------------

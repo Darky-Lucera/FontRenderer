@@ -90,11 +90,11 @@ namespace MoreJumpsPremultiplied {
             if (opaque) {
                 DrawQuads<4>(scenario, dst, [premultiplied](const uint8_t *texel, uint32_t &pixel) {
                     if (texel[3] == 255) {
-                        const uint32_t bgra = LoadBgra(texel);
+                        const uint32_t bgra = LoadBGRA(texel);
                         pixel = Div255Pair(MulPairByPair(bgra, premultiplied)) | (Div255Pair(MulPairByPair(bgra >> 8, premultiplied >> 8)) << 8);
                     }
                     else if (texel[3] != 0) {
-                        const uint32_t bgra = LoadBgra(texel);
+                        const uint32_t bgra = LoadBGRA(texel);
                         pixel = Blend(pixel, MulPairByPair(bgra, premultiplied), MulPairByPair(bgra >> 8, premultiplied >> 8), texel[3]);
                     }
                 });
@@ -102,7 +102,7 @@ namespace MoreJumpsPremultiplied {
             else {
                 DrawQuads<4>(scenario, dst, [premultiplied, colorAlpha](const uint8_t *texel, uint32_t &pixel) {
                     if (texel[3] != 0) {
-                        const uint32_t bgra = LoadBgra(texel);
+                        const uint32_t bgra = LoadBGRA(texel);
                         pixel = Blend(pixel, MulPairByPair(bgra, premultiplied), MulPairByPair(bgra >> 8, premultiplied >> 8),
                                       MulDiv255(texel[3], colorAlpha));
                     }

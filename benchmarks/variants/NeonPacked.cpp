@@ -692,7 +692,7 @@ namespace NeonPacked {
         //-----------------------------
         template <bool kOpaque, bool kSkip>
         ALWAYS_INLINE bool
-        DrawBgraShortcut(const Color &color, const uint8x8x4_t &texels, uint8_t *bytes) {
+        DrawBGRAShortcut(const Color &color, const uint8x8x4_t &texels, uint8_t *bytes) {
             if (kSkip == false) {
                 return false;
             }
@@ -712,7 +712,7 @@ namespace NeonPacked {
         //-----------------------------
         template <bool kOpaque>
         ALWAYS_INLINE void
-        DrawBgraTexel(const Color &color, const uint8_t *texel, uint32_t *dst) {
+        DrawBGRATexel(const Color &color, const uint8_t *texel, uint32_t *dst) {
             const uint32_t t = Load32(texel);
             if (t >> 24) {
                 const uint8x8_t  texels = vreinterpret_u8_u32(vdup_n_u32(t));
@@ -726,7 +726,7 @@ namespace NeonPacked {
         //-----------------------------
         template <bool kOpaque, bool kSkip>
         ALWAYS_INLINE void
-        DrawBgraRow(const Color &color, const uint8_t *src, uint32_t *dst, int32_t w) {
+        DrawBGRARow(const Color &color, const uint8_t *src, uint32_t *dst, int32_t w) {
             uint8_t *bytes = reinterpret_cast<uint8_t *>(dst);
             if (w >= 8) {
                 const size_t      last       = size_t(w - 8);
@@ -736,11 +736,11 @@ namespace NeonPacked {
                 for (size_t x = 0; x < last; x += 8) {
                     uint8_t           *blockBytes = bytes + 4 * x;
                     const uint8x8x4_t texels      = vld4_u8(src + 4 * x);
-                    if (DrawBgraShortcut<kOpaque, kSkip>(color, texels, blockBytes) == false) {
+                    if (DrawBGRAShortcut<kOpaque, kSkip>(color, texels, blockBytes) == false) {
                         vst4_u8(blockBytes, BlendPlanes<kOpaque>(color, texels, texels.val[3], vld4_u8(blockBytes)));
                     }
                 }
-                if (DrawBgraShortcut<kOpaque, kSkip>(color, lastTexels, lastBytes) == false) {
+                if (DrawBGRAShortcut<kOpaque, kSkip>(color, lastTexels, lastBytes) == false) {
                     vst4_u8(lastBytes, BlendPlanes<kOpaque>(color, lastTexels, lastTexels.val[3], lastPixels));
                 }
             }
@@ -773,7 +773,7 @@ namespace NeonPacked {
             }
             else {
                 while (w > 0) {
-                    DrawBgraTexel<kOpaque>(color, src, dst);
+                    DrawBGRATexel<kOpaque>(color, src, dst);
                     src += 4;
                     w--;
                     dst++;
@@ -877,7 +877,7 @@ namespace NeonPacked {
         //-----------------------------
         template <bool kOpaque, bool kSkip>
         ALWAYS_INLINE void
-        DrawBgraRowPacked(const Color &color, const uint8_t *src, uint32_t *dst, int32_t w) {
+        DrawBGRARowPacked(const Color &color, const uint8_t *src, uint32_t *dst, int32_t w) {
             uint8_t *bytes = reinterpret_cast<uint8_t *>(dst);
             if (w >= 8) {
                 const size_t full = size_t(w) & ~size_t(7);
@@ -910,7 +910,7 @@ namespace NeonPacked {
             }
             else {
                 while (w > 0) {
-                    DrawBgraTexel<kOpaque>(color, src, dst);
+                    DrawBGRATexel<kOpaque>(color, src, dst);
                     src += 4;
                     w--;
                     dst++;
@@ -922,19 +922,19 @@ namespace NeonPacked {
         //-----------------------------
         template <bool kOpaque, bool kSkip, bool kPacked>
         ALWAYS_INLINE void
-        DrawBgraRows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRARows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
                      uint32_t *dst, uint32_t dstStride) {
             for (int32_t y = 0; y < height; ++y) {
                 uint32_t *row = &dst[size_t(y) * dstStride];
                 if (stepX == 1 && kPacked) {
-                    DrawBgraRowPacked<kOpaque, kSkip>(color, &src[size_t(y) * stepY * 4], row, width);
+                    DrawBGRARowPacked<kOpaque, kSkip>(color, &src[size_t(y) * stepY * 4], row, width);
                 }
                 else if (stepX == 1) {
-                    DrawBgraRow<kOpaque, kSkip>(color, &src[size_t(y) * stepY * 4], row, width);
+                    DrawBGRARow<kOpaque, kSkip>(color, &src[size_t(y) * stepY * 4], row, width);
                 }
                 else {
                     for (int32_t x = 0; x < width; ++x) {
-                        DrawBgraTexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
+                        DrawBGRATexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
                     }
                 }
             }
@@ -943,15 +943,15 @@ namespace NeonPacked {
         //-----------------------------
         template <bool kOpaque, int32_t kSkipWidth, bool kPacked>
         NO_INLINE void
-        DrawBgraGlyph(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRAGlyph(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                       uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t /*alpha*/) {
             const Color   color = MakeColor(premultiplied);
             const uint8_t *src  = &texture[offset * 4];
             if (UsesShortcuts<kSkipWidth>(width)) {
-                DrawBgraRows<kOpaque, true, kPacked>(color, src, stepX, stepY, width, height, dst, dstStride);
+                DrawBGRARows<kOpaque, true, kPacked>(color, src, stepX, stepY, width, height, dst, dstStride);
             }
             else {
-                DrawBgraRows<kOpaque, false, kPacked>(color, src, stepX, stepY, width, height, dst, dstStride);
+                DrawBGRARows<kOpaque, false, kPacked>(color, src, stepX, stepY, width, height, dst, dstStride);
             }
         }
 
@@ -966,7 +966,7 @@ namespace NeonPacked {
                 return opaque ? DrawAlpha8Glyph<true, kSkipWidth, kPacked, kQuadTail, kNarrow> : DrawAlpha8Glyph<false, kSkipWidth, kPacked, kQuadTail, kNarrow>;
             }
 
-            return opaque ? DrawBgraGlyph<true, kSkipWidth, kPacked> : DrawBgraGlyph<false, kSkipWidth, kPacked>;
+            return opaque ? DrawBGRAGlyph<true, kSkipWidth, kPacked> : DrawBGRAGlyph<false, kSkipWidth, kPacked>;
         }
 
         //-----------------------------

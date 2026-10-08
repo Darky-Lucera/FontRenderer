@@ -87,15 +87,15 @@ namespace MoreJumpsNoInlineCast {
 
         //-----------------------------
         void
-        DrawBgraOpaque(const Scenario &scenario, uint32_t *dst, const uint32_t premultiplied) {
+        DrawBGRAOpaque(const Scenario &scenario, uint32_t *dst, const uint32_t premultiplied) {
             DrawQuads<4>(scenario, dst, [premultiplied](const uint8_t *texel, uint32_t &pixel) {
                 if (texel[3] == 255) {
-                    //const uint32_t bgra = LoadBgra(texel);
+                    //const uint32_t bgra = LoadBGRA(texel);
                     const uint32_t bgra = *reinterpret_cast<const uint32_t *>(texel);
                     pixel = Div255Pair(MulPairByPair(bgra, premultiplied)) | (Div255Pair(MulPairByPair(bgra >> 8, premultiplied >> 8)) << 8);
                 }
                 else if (texel[3] != 0) {
-                    //const uint32_t bgra = LoadBgra(texel);
+                    //const uint32_t bgra = LoadBGRA(texel);
                     const uint32_t bgra = *reinterpret_cast<const uint32_t *>(texel);
                     pixel = Blend(pixel, MulPairByPair(bgra, premultiplied), MulPairByPair(bgra >> 8, premultiplied >> 8), texel[3]);
                 }
@@ -104,10 +104,10 @@ namespace MoreJumpsNoInlineCast {
 
         //-----------------------------
         void
-        DrawBgra(const Scenario &scenario, uint32_t *dst, const uint32_t premultiplied, const uint32_t colorAlpha) {
+        DrawBGRA(const Scenario &scenario, uint32_t *dst, const uint32_t premultiplied, const uint32_t colorAlpha) {
             DrawQuads<4>(scenario, dst, [premultiplied, colorAlpha](const uint8_t *texel, uint32_t &pixel) {
                 if (texel[3] != 0) {
-                    //const uint32_t bgra = LoadBgra(texel);
+                    //const uint32_t bgra = LoadBGRA(texel);
                     const uint32_t bgra = *reinterpret_cast<const uint32_t *>(texel);
                     pixel = Blend(pixel, MulPairByPair(bgra, premultiplied), MulPairByPair(bgra >> 8, premultiplied >> 8),
                                   MulDiv255(texel[3], colorAlpha));
@@ -135,10 +135,10 @@ namespace MoreJumpsNoInlineCast {
         }
         else {
             if (opaque) {
-                DrawBgraOpaque(scenario, dst, premultiplied);
+                DrawBGRAOpaque(scenario, dst, premultiplied);
             }
             else {
-                DrawBgra(scenario, dst, premultiplied, colorAlpha);
+                DrawBGRA(scenario, dst, premultiplied, colorAlpha);
             }
         }
     }

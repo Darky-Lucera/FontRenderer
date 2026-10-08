@@ -505,7 +505,7 @@ namespace Sse2Spread {
 
         //-----------------------------
         template <bool kOpaque, bool kSkip>
-        struct BgraRow {
+        struct BGRARow {
             const Color     &color;
             const uint8_t   *src;       // The texel of the first pixel of the row
             uint32_t        *dst;
@@ -653,7 +653,7 @@ namespace Sse2Spread {
         //-----------------------------
         template <bool kOpaque, bool kSkip>
         FONTRENDERER_ALWAYS_INLINE void
-        DrawBgraRows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRARows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
                      uint32_t *dst, uint32_t dstStride) {
             if (stepX != 1) {
                 for (int32_t y = 0; y < height; ++y) {
@@ -666,7 +666,7 @@ namespace Sse2Spread {
             }
 
             for (int32_t y = 0; y < height; ++y) {
-                DrawRow(BgraRow<kOpaque, kSkip> { color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride] }, width);
+                DrawRow(BGRARow<kOpaque, kSkip> { color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride] }, width);
             }
         }
 
@@ -674,15 +674,15 @@ namespace Sse2Spread {
         //-----------------------------
         template <bool kOpaque>
         FONTRENDERER_NO_INLINE void
-        DrawBgra(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRA(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                  uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t alpha) {
             const Color   color = MakeColor(premultiplied, alpha);
             const uint8_t *src  = &texture[offset * 4];
             if (UsesShortcuts<kOpaque>(width)) {
-                DrawBgraRows<kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
+                DrawBGRARows<kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
             }
             else {
-                DrawBgraRows<kOpaque, false>(color, src, stepX, stepY, width, height, dst, dstStride);
+                DrawBGRARows<kOpaque, false>(color, src, stepX, stepY, width, height, dst, dstStride);
             }
         }
 
@@ -694,7 +694,7 @@ namespace Sse2Spread {
                 return opaque ? DrawAlpha8<O, true> : DrawAlpha8<O, false>;
             }
 
-            return opaque ? DrawBgra<true> : DrawBgra<false>;
+            return opaque ? DrawBGRA<true> : DrawBGRA<false>;
         }
 
         //-----------------------------

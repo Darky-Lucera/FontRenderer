@@ -107,7 +107,7 @@ namespace Sse2Overlap {
             static constexpr bool    kSplit                = true;     // The split layout instead of the one of pixman
             static constexpr bool    kUprightApart         = false;    // Glyphs that are not rotated are drawn by a function of their own
             static constexpr bool    kOctets               = false;    // Blocks of 8 pixels while 8 fit, which ask once whether they can skip the blend
-            static constexpr bool    kBgraTint             = false;    // A block of opaque texels under an opaque text is tinted without blending
+            static constexpr bool    kBGRATint             = false;    // A block of opaque texels under an opaque text is tinted without blending
             static constexpr bool    kWidths               = false;    // Upright glyphs without shortcuts pick the code of their row width once
             static constexpr bool    kBandWidths           = false;    // kWidths for the bands of rotated glyphs
             static constexpr bool    kWidthIfs             = false;    // kWidths and kBandWidths pick a case, but every case draws as Any
@@ -162,8 +162,8 @@ namespace Sse2Overlap {
         };
 
         //-----------------------------
-        struct BgraTintOptions : DrawOptions {
-            static constexpr bool    kBgraTint             = true;
+        struct BGRATintOptions : DrawOptions {
+            static constexpr bool    kBGRATint             = true;
         };
 
         //-----------------------------
@@ -922,7 +922,7 @@ namespace Sse2Overlap {
 
         //-----------------------------
         template <class O, bool kOpaque, bool kSkip>
-        struct BgraRow {
+        struct BGRARow {
             const Color     &color;
             const uint8_t   *src;       // The texel of the first pixel of the row
             uint32_t        *dst;
@@ -942,7 +942,7 @@ namespace Sse2Overlap {
                 if (kSkip && IsTransparent(texels)) {
                     return;
                 }
-                if (kSkip && kOpaque && O::kBgraTint && IsOpaque(texels)) {
+                if (kSkip && kOpaque && O::kBGRATint && IsOpaque(texels)) {
                     StoreQuad(&dst[x], color.white ? texels : Tint<O::kSplit>(color, texels));
                     return;
                 }
@@ -966,7 +966,7 @@ namespace Sse2Overlap {
                 if (kSkip && IsTransparent(_mm_or_si128(low, high))) {
                     return;
                 }
-                if (kSkip && kOpaque && O::kBgraTint && IsOpaque(_mm_and_si128(low, high))) {
+                if (kSkip && kOpaque && O::kBGRATint && IsOpaque(_mm_and_si128(low, high))) {
                     StoreQuad(&dst[x], color.white ? low : Tint<O::kSplit>(color, low));
                     StoreQuad(&dst[x + 4], color.white ? high : Tint<O::kSplit>(color, high));
                     return;
@@ -1327,7 +1327,7 @@ namespace Sse2Overlap {
         //-----------------------------
         template <class O, bool kOpaque, bool kSkip>
         ALWAYS_INLINE void
-        DrawBgraRows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRARows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
                      uint32_t *dst, uint32_t dstStride) {
             if (stepX != 1) {
                 for (int32_t y = 0; y < height; ++y) {
@@ -1340,22 +1340,22 @@ namespace Sse2Overlap {
             }
 
             for (int32_t y = 0; y < height; ++y) {
-                DrawLine<O>(BgraRow<O, kOpaque, kSkip> { color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride] }, width);
+                DrawLine<O>(BGRARow<O, kOpaque, kSkip> { color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride] }, width);
             }
         }
 
         //-----------------------------
         template <class O, bool kOpaque>
         NO_INLINE void
-        DrawBgraGlyph(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRAGlyph(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                       uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t alpha) {
             const Color   color = MakeColor(premultiplied, alpha);
             const uint8_t *src  = &texture[offset * 4];
             if (UsesShortcuts<O, kOpaque>(width)) {
-                DrawBgraRows<O, kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
+                DrawBGRARows<O, kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
             }
             else {
-                DrawBgraRows<O, kOpaque, false>(color, src, stepX, stepY, width, height, dst, dstStride);
+                DrawBGRARows<O, kOpaque, false>(color, src, stepX, stepY, width, height, dst, dstStride);
             }
         }
 
@@ -1370,7 +1370,7 @@ namespace Sse2Overlap {
                 return opaque ? DrawAlpha8Glyph<O, true> : DrawAlpha8Glyph<O, false>;
             }
 
-            return opaque ? DrawBgraGlyph<O, true> : DrawBgraGlyph<O, false>;
+            return opaque ? DrawBGRAGlyph<O, true> : DrawBGRAGlyph<O, false>;
         }
 
         //-----------------------------
@@ -1457,8 +1457,8 @@ namespace Sse2Overlap {
 
     //---------------------------------
     void
-    DrawBgraTint(Scenario &scenario, uint32_t *dst) {
-        DrawQuads<BgraTintOptions>(scenario, dst);
+    DrawBGRATint(Scenario &scenario, uint32_t *dst) {
+        DrawQuads<BGRATintOptions>(scenario, dst);
     }
 
     //---------------------------------

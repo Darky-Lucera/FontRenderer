@@ -74,6 +74,7 @@ namespace X64v2 {
             static constexpr bool   kWidths     = false;    // Glyphs without shortcuts pick the code of their row width once
             static constexpr bool   kPairs      = false;    // Rows of a glyph of Alpha8 that is not rotated drawn two at a time
             static constexpr bool   kBandWidths = false;    // kWidths for the bands of rotated glyphs
+            static constexpr bool   kNoUnroll   = false;    // Keeps clang from unrolling the loop over the blocks of a row
         };
 
         //-----------------------------
@@ -119,6 +120,11 @@ namespace X64v2 {
         };
 
         //-----------------------------
+        struct NoUnrollOptions : DrawOptions {
+            static constexpr bool   kNoUnroll   = true;
+        };
+
+        //-----------------------------
         struct Sse2Options {
             static constexpr bool   kMadd       = false;
             static constexpr bool   kShuffle    = false;
@@ -126,6 +132,7 @@ namespace X64v2 {
             static constexpr bool   kWidths     = false;
             static constexpr bool   kPairs      = false;
             static constexpr bool   kBandWidths = false;
+            static constexpr bool   kNoUnroll   = false;
         };
 
         // A compiler can stop inlining the helpers once a glyph function has many of them, and then pass the color through
@@ -526,6 +533,8 @@ namespace X64v2 {
         //-----------------------------
         template <class O, bool kOpaque, bool kSkip, bool kRotated>
         struct Alpha8Row {
+            static constexpr bool kNoUnroll = O::kNoUnroll;
+
             const Color     &color;
             const uint8_t   *mask;      // The coverage of the first pixel of the row
             size_t          step;       // Between two pixels of the row
@@ -583,6 +592,8 @@ namespace X64v2 {
         //-----------------------------
         template <class O, bool kOpaque, bool kSkip, bool kPartial>
         struct Alpha8Band {
+            static constexpr bool kNoUnroll = O::kNoUnroll;
+
             const Color     &color;
             const uint8_t   *mask;      // The coverage of the first pixel of the band
             size_t          step;       // Between two columns of the glyph
@@ -676,7 +687,9 @@ namespace X64v2 {
 
         //-----------------------------
         template <class O, bool kOpaque, bool kSkip>
-        struct BgraRow {
+        struct BGRARow {
+            static constexpr bool kNoUnroll = O::kNoUnroll;
+
             const Color     &color;
             const uint8_t   *src;       // The texel of the first pixel of the row
             uint32_t        *dst;
@@ -733,6 +746,30 @@ namespace X64v2 {
             }
         };
 
+        // The blocks of a row before its last one.
+        //-----------------------------
+        template <class TLine>
+        FONTRENDERER_ALWAYS_INLINE void
+        DrawQuadsBefore(std::false_type, const TLine &line, size_t tail) {
+            for (size_t x = 0; x < tail; x += 4) {
+                line.Quad(x);
+            }
+        }
+
+        // Built for x86-64-v3, clang 19 unrolls the loop above by two, and a row then needs more instructions and
+        // branches before its first block. It does not unroll it for x86-64-v2.
+        //-----------------------------
+        template <class TLine>
+        FONTRENDERER_ALWAYS_INLINE void
+        DrawQuadsBefore(std::true_type, const TLine &line, size_t tail) {
+#if defined(__clang__)
+            #pragma clang loop unroll(disable)
+#endif
+            for (size_t x = 0; x < tail; x += 4) {
+                line.Quad(x);
+            }
+        }
+
         // A row of at least 4 pixels, or a band of 4 such rows. The last block is read before the row writes anything, and
         // the blocks before it are drawn as they come, so a row needs no branch on how many pixels are left.
         //-----------------------------
@@ -741,9 +778,7 @@ namespace X64v2 {
         DrawBlocks(const TLine &line, int32_t w) {
             const size_t tail   = size_t(w) - 4;
             const auto   pixels = line.ReadQuad(tail);
-            for (size_t x = 0; x < tail; x += 4) {
-                line.Quad(x);
-            }
+            DrawQuadsBefore(std::integral_constant<bool, TLine::kNoUnroll>(), line, tail);
             line.QuadRead(tail, pixels);
         }
 
@@ -808,6 +843,8 @@ namespace X64v2 {
         //-----------------------------
         template <class TRow>
         struct RowPair {
+            static constexpr bool kNoUnroll = TRow::kNoUnroll;
+
             TRow    first;
             TRow    second;
 
@@ -1020,7 +1057,7 @@ namespace X64v2 {
         //-----------------------------
         template <class O, bool kOpaque, bool kSkip>
         FONTRENDERER_ALWAYS_INLINE void
-        DrawBgraRows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRARows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
                      uint32_t *dst, uint32_t dstStride) {
             if (stepX != 1) {
                 for (int32_t y = 0; y < height; ++y) {
@@ -1033,22 +1070,22 @@ namespace X64v2 {
             }
 
             for (int32_t y = 0; y < height; ++y) {
-                DrawRow(BgraRow<O, kOpaque, kSkip> { color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride] }, width);
+                DrawRow(BGRARow<O, kOpaque, kSkip> { color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride] }, width);
             }
         }
 
         //-----------------------------
         template <class O, bool kOpaque>
         FONTRENDERER_NO_INLINE void
-        DrawBgra(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRA(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                  uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t alpha) {
             const Color   color = MakeColor(premultiplied, alpha);
             const uint8_t *src  = &texture[offset * 4];
             if (UsesShortcuts<kOpaque>(width)) {
-                DrawBgraRows<O, kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
+                DrawBGRARows<O, kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
             }
             else {
-                DrawBgraRows<O, kOpaque, false>(color, src, stepX, stepY, width, height, dst, dstStride);
+                DrawBGRARows<O, kOpaque, false>(color, src, stepX, stepY, width, height, dst, dstStride);
             }
         }
 
@@ -1060,7 +1097,7 @@ namespace X64v2 {
                 return opaque ? DrawAlpha8<O, true> : DrawAlpha8<O, false>;
             }
 
-            return opaque ? DrawBgra<O, true> : DrawBgra<O, false>;
+            return opaque ? DrawBGRA<O, true> : DrawBGRA<O, false>;
         }
 
         //-----------------------------
@@ -1107,6 +1144,12 @@ namespace X64v2 {
     void
     DrawNoTest(Scenario &scenario, uint32_t *dst) {
         DrawQuads<NoTestOptions>(scenario, dst);
+    }
+
+    //---------------------------------
+    void
+    DrawNoUnroll(Scenario &scenario, uint32_t *dst) {
+        DrawQuads<NoUnrollOptions>(scenario, dst);
     }
 
     //---------------------------------

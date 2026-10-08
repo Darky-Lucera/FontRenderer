@@ -27,20 +27,27 @@ constexpr uint32_t FontBase::kMaxTextureSize;
 //-------------------------------------
 namespace {
 
-    // The library is built for x86-64-v2, so an older processor would stop at the first instruction of that level, with
-    // an illegal instruction that does not say why. This object stops the program at start instead, with the reason.
-    // It is in this file because every program that uses a font links it. The static objects of the program that are
-    // built before this one still run first.
-    struct X64v2Check {
-        X64v2Check() {
+    // The library is built for x86-64-v2 or v3, so an older processor would stop at the first instruction of that level,
+    // with an illegal instruction that does not say why. This object stops the program at start instead, with the
+    // reason. It is in this file because every program that uses a font links it. The static objects of the program
+    // that are built before this one still run first.
+    struct LevelCheck {
+        LevelCheck() {
+#if defined(FONTRENDERER_X86_64_V3)
+            if (CpuX86::HasX64v3() == false) {
+                std::fputs("FontRenderer was built for x86-64-v3 (FONTRENDERER_X86_64_V3), which this processor does not have.\n", stderr);
+                std::abort();
+            }
+#else
             if (CpuX86::HasX64v2() == false) {
                 std::fputs("FontRenderer was built for x86-64-v2 (FONTRENDERER_X86_64_V2), which this processor does not have.\n", stderr);
                 std::abort();
             }
+#endif
         }
     };
 
-    const X64v2Check gX64v2Check;
+    const LevelCheck gLevelCheck;
 
 } // end of namespace
 #endif

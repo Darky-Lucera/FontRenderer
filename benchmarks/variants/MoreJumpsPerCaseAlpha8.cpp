@@ -101,7 +101,7 @@ namespace MoreJumpsPerCaseAlpha8 {
 
     //---------------------------------
     void
-    DrawBgra(Scenario &scenario, uint32_t *dst) {
+    DrawBGRA(Scenario &scenario, uint32_t *dst) {
         const FontBase  &font            = *scenario.font;
         const uint8_t   *texture         = font.GetTexture();
         const size_t    textureWidth     = font.GetTextureWidth();
@@ -148,7 +148,7 @@ namespace MoreJumpsPerCaseAlpha8 {
             }
         }
         else {
-            DrawBgra(scenario, dst);
+            DrawBGRA(scenario, dst);
         }
     }
 

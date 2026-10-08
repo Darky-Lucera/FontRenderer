@@ -18,5 +18,10 @@ namespace CpuX86 {
     bool    HasX64v2();
 #endif
 
+#if defined(FONTRENDERER_X86_64_V3) || defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+    // Whether this processor has x86-64-v3, which includes AVX2, and the operating system saves its registers.
+    bool    HasX64v3();
+#endif
+
 } // end of namespace CpuX86
 } // end of namespace MindShake

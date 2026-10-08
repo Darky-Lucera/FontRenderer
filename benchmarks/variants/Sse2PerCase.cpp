@@ -191,7 +191,7 @@ namespace Sse2PerCase {
         }
 
         //-----------------------------
-        struct BgraColor {
+        struct BGRAColor {
             __m128i     xmm_color;      // The premultiplied color of the text, unpacked twice, for 2 pixels
             bool        white;
         };
@@ -201,7 +201,7 @@ namespace Sse2PerCase {
         //-----------------------------
         template <bool kOpaque>
         inline void
-        DrawBgraTexel(const BgraColor &color, const uint8_t *texel, uint32_t *dst) {
+        DrawBGRATexel(const BGRAColor &color, const uint8_t *texel, uint32_t *dst) {
             uint32_t t;
             memcpy(&t, texel, sizeof(uint32_t));
             if (t >> 24) {
@@ -217,7 +217,7 @@ namespace Sse2PerCase {
         //-----------------------------
         template <bool kOpaque>
         inline void
-        DrawBgraBlock(const BgraColor &color, __m128i xmm_src, uint32_t *dst) {
+        DrawBGRABlock(const BGRAColor &color, __m128i xmm_src, uint32_t *dst) {
             if (is_transparent(xmm_src)) {
                 return;
             }
@@ -260,10 +260,10 @@ namespace Sse2PerCase {
         //-----------------------------
         template <bool kOpaque, bool kTailBlock>
         inline void
-        DrawBgraRow(const BgraColor &color, const uint8_t *src, uint32_t *dst, int32_t w) {
+        DrawBGRARow(const BGRAColor &color, const uint8_t *src, uint32_t *dst, int32_t w) {
             const bool hasBlocks = w >= 4;
             while (w >= 4) {
-                DrawBgraBlock<kOpaque>(color, _mm_loadu_si128(reinterpret_cast<const __m128i *>(src)), dst);
+                DrawBGRABlock<kOpaque>(color, _mm_loadu_si128(reinterpret_cast<const __m128i *>(src)), dst);
                 w   -= 4;
                 dst += 4;
                 src += 16;
@@ -273,11 +273,11 @@ namespace Sse2PerCase {
                 const int32_t drawn   = 4 - w;
                 const __m128i xmm_src = _mm_loadu_si128(reinterpret_cast<const __m128i *>(src - size_t(drawn) * 4));
                 const __m128i keep    = _mm_load_si128(reinterpret_cast<const __m128i *>(kKeepFrom[drawn]));
-                DrawBgraBlock<kOpaque>(color, _mm_and_si128(xmm_src, keep), dst - drawn);
+                DrawBGRABlock<kOpaque>(color, _mm_and_si128(xmm_src, keep), dst - drawn);
             }
             else {
                 while (w > 0) {
-                    DrawBgraTexel<kOpaque>(color, src, dst);
+                    DrawBGRATexel<kOpaque>(color, src, dst);
                     src += 4;
                     w--;
                     dst++;
@@ -289,9 +289,9 @@ namespace Sse2PerCase {
         //-----------------------------
         template <bool kOpaque, bool kTailBlock>
         NO_INLINE void
-        DrawBgraGlyph(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+        DrawBGRAGlyph(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                       uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t /*alpha*/) {
-            BgraColor color;
+            BGRAColor color;
             color.xmm_color = expand_pixel_32_1x128(premultiplied);
             color.white     = premultiplied == 0xffffffffu;
 
@@ -299,11 +299,11 @@ namespace Sse2PerCase {
             for (int32_t y = 0; y < height; ++y) {
                 uint32_t *row = &dst[size_t(y) * dstStride];
                 if (stepX == 1) {
-                    DrawBgraRow<kOpaque, kTailBlock>(color, &src[size_t(y) * stepY * 4], row, width);
+                    DrawBGRARow<kOpaque, kTailBlock>(color, &src[size_t(y) * stepY * 4], row, width);
                 }
                 else {
                     for (int32_t x = 0; x < width; ++x) {
-                        DrawBgraTexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
+                        DrawBGRATexel<kOpaque>(color, &src[(size_t(y) * stepY + size_t(x) * stepX) * 4], &row[x]);
                     }
                 }
             }
@@ -319,7 +319,7 @@ namespace Sse2PerCase {
                 return opaque ? DrawAlpha8Glyph<true, kTailBlock> : DrawAlpha8Glyph<false, kTailBlock>;
             }
 
-            return opaque ? DrawBgraGlyph<true, kTailBlock> : DrawBgraGlyph<false, kTailBlock>;
+            return opaque ? DrawBGRAGlyph<true, kTailBlock> : DrawBGRAGlyph<false, kTailBlock>;
         }
 
         //-----------------------------

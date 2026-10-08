@@ -46,10 +46,24 @@
 // - FONTRENDERER_X86_64_V2_AT_RUNTIME: the library is built for the default x86-64 level, and only GlyphDrawX64v2.cpp
 //   for x86-64-v2. The library draws with that file only when cpuid says that the processor has the level.
 // Without CMake, define one of the two macros for every file.
-// A universal build of macOS defines them for its ARM part too, where they mean nothing.
+//
+// x86-64-v3 adds AVX, AVX2, BMI1, BMI2, FMA, F16C, LZCNT and MOVBE to x86-64-v2. GlyphDrawX64v3.cpp draws the glyphs of a
+// BGRA32 texture with it. CMake can also define one of these:
+// - FONTRENDERER_X86_64_V3: the whole library is built for x86-64-v3, so it only runs on a processor that has it.
+//   FONTRENDERER_X86_64_V2 is then defined too.
+// - FONTRENDERER_X86_64_V3_AT_RUNTIME: only GlyphDrawX64v3.cpp is built for x86-64-v3, and the library draws with it
+//   only when cpuid says that the processor has the level.
+// Without CMake, define one of them for every file, or neither.
+//
+// A universal build of macOS defines these macros for its ARM part too, where they mean nothing.
 #if !(defined(FONTRENDERER_CPU_X86) && defined(FONTRENDERER_CPU_64BIT))
     #undef FONTRENDERER_X86_64_V2
     #undef FONTRENDERER_X86_64_V2_AT_RUNTIME
+    #undef FONTRENDERER_X86_64_V3
+    #undef FONTRENDERER_X86_64_V3_AT_RUNTIME
+#endif
+#if !defined(FONTRENDERER_SSE2)
+    #undef FONTRENDERER_X86_64_V3_AT_RUNTIME
 #endif
 
 #if defined(_MSC_VER)

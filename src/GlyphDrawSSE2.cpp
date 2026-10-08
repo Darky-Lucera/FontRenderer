@@ -37,6 +37,11 @@
 //   instruction instead of two, and the coverage of the 4 rows of a band with 4 instead of 6.
 // - _mm_testz_si128 and _mm_testc_si128 (SSE4.1) tell whether a band has no coverage or full coverage, and whether 4
 //   texels are transparent, without _mm_movemask_epi8 and a comparison.
+//
+// GlyphDrawX64v3.cpp builds this file a third time, for x86-64-v3, with FONTRENDERER_GLYPHDRAW_X64V3 defined too. In
+// that build a glyph 8 pixels wide or more is drawn in blocks of 8 pixels in registers of 256 bits, as the blocks of 4
+// are, and a narrower one as in the build for x86-64-v2. A rotated glyph of Alpha8 draws bands of 4 rows by 8 columns:
+// two transpositions of 4 columns, one in each half of the register.
 
 /*
  * Copyright © 2008 Rodrigo Kumpera
@@ -72,7 +77,9 @@
 // With the whole library built for x86-64-v2, only the build of GlyphDrawX64v2.cpp draws.
 #if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_GLYPHDRAW_X64V2) || !defined(FONTRENDERER_X86_64_V2))
 
-#if defined(FONTRENDERER_GLYPHDRAW_X64V2)
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+    #include <immintrin.h>      // AVX2, which includes SSE4.1
+#elif defined(FONTRENDERER_GLYPHDRAW_X64V2)
     #include <smmintrin.h>      // SSE4.1, which includes SSSE3
 #else
     #include <emmintrin.h>
@@ -432,6 +439,218 @@ namespace {
 #endif
     }
 
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+    // Color for 8 pixels, made only for the glyphs drawn in blocks of 8. Color stays of 128 bits: when the blocks of 4
+    // took the low halves of registers of 256 bits, MSVC 19.44 kept the color in memory.
+    //---------------------------------
+    struct Color8 {
+        __m256i     solid;
+        __m256i     even;
+        __m256i     odd;
+        __m256i     alpha;
+        __m256i     evenMadd;
+        __m256i     oddMadd;
+    };
+
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE Color8
+    MakeColor8(uint32_t premultiplied, uint32_t alpha) {
+        Color8 color;
+        color.solid    = _mm256_set1_epi32(int(premultiplied));
+        color.even     = _mm256_and_si256(color.solid, _mm256_set1_epi16(0x00ff));
+        color.odd      = _mm256_srli_epi16(color.solid, 8);
+        color.alpha    = _mm256_set1_epi16(int16_t(alpha));
+        color.evenMadd = _mm256_xor_si256(_mm256_slli_epi16(color.even, 8), _mm256_set1_epi8(-128));
+        color.oddMadd  = _mm256_xor_si256(_mm256_slli_epi16(color.odd,  8), _mm256_set1_epi8(-128));
+        return color;
+    }
+
+    // The 8 bytes at p as a number.
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE uint64_t
+    Load64(const uint8_t *p) {
+        uint64_t value;
+        memcpy(&value, p, sizeof(value));
+        return value;
+    }
+
+    // 8 pixels or texels, as they are in memory.
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    LoadOctet(const void *p) {
+        return _mm256_loadu_si256(static_cast<const __m256i *>(p));
+    }
+
+    // Writes the 8 pixels of x.
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE void
+    StoreOctet(void *p, __m256i x) {
+        _mm256_storeu_si256(static_cast<__m256i *>(p), x);
+    }
+
+    // Div255, Blend, EvenBytes, OddBytes and JoinBytes for 8 pixels.
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    Div255(__m256i x) {
+        return _mm256_mulhi_epu16(_mm256_add_epi16(x, _mm256_set1_epi16(0x0080)), _mm256_set1_epi16(0x0101));
+    }
+
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    Blend(__m256i source, __m256i alpha, __m256i pixels) {
+        const __m256i inverse = _mm256_xor_si256(alpha, _mm256_set1_epi16(0x00ff));
+        return Div255(_mm256_add_epi16(source, _mm256_mullo_epi16(pixels, inverse)));
+    }
+
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    EvenBytes(__m256i x) {
+        return _mm256_and_si256(x, _mm256_set1_epi16(0x00ff));
+    }
+
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    OddBytes(__m256i x) {
+        return _mm256_srli_epi16(x, 8);
+    }
+
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    JoinBytes(__m256i even, __m256i odd) {
+        return _mm256_or_si256(even, _mm256_slli_epi16(odd, 8));
+    }
+
+    // ExpandAlphaOdd for 8 pixels. _mm256_shuffle_epi8 moves bytes within each half, which here is enough.
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    ExpandAlphaOdd(__m256i odd) {
+        return _mm256_shuffle_epi8(odd, _mm256_setr_epi8(2, 3, 2, 3, 6, 7, 6, 7, 10, 11, 10, 11, 14, 15, 14, 15,
+                                                         2, 3, 2, 3, 6, 7, 6, 7, 10, 11, 10, 11, 14, 15, 14, 15));
+    }
+
+    // BlendTexels for 8 pixels.
+    //---------------------------------
+    template <bool kOpaque>
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    BlendTexels(const Color8 &color, __m256i texels, __m256i pixels) {
+        const __m256i odd       = OddBytes(texels);
+        const __m256i sourceOdd = _mm256_mullo_epi16(odd, color.odd);
+        const __m256i alpha     = ExpandAlphaOdd(kOpaque ? odd : Div255(sourceOdd));
+        const __m256i even      = Blend(_mm256_mullo_epi16(EvenBytes(texels), color.even), alpha, EvenBytes(pixels));
+        return JoinBytes(even, Blend(sourceOdd, alpha, OddBytes(pixels)));
+    }
+
+    // The alpha of the 8 texels is 0.
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE bool
+    IsTransparent(__m256i texels) {
+        return _mm256_testz_si256(texels, _mm256_set1_epi32(int(0xff000000u))) != 0;
+    }
+
+    // A mask of _mm256_shuffle_epi8, which moves bytes only within each half, that does in each half what mask does in
+    // a register of 128 bits.
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    BothHalves(__m128i mask) {
+        return _mm256_broadcastsi128_si256(mask);
+    }
+
+    // Spread for 8 coverage bytes, copied first to both halves.
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    Spread8(uint64_t m) {
+        return _mm256_shuffle_epi8(_mm256_set1_epi64x(int64_t(m)),
+                                   _mm256_setr_epi8(0, -1, 0, -1, 1, -1, 1, -1, 2, -1, 2, -1, 3, -1, 3, -1,
+                                                    4, -1, 4, -1, 5, -1, 5, -1, 6, -1, 6, -1, 7, -1, 7, -1));
+    }
+
+    // Weights for 8 coverage bytes.
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    Weights8(uint64_t m) {
+        const __m256i bytes = _mm256_shuffle_epi8(_mm256_set1_epi64x(int64_t(m)),
+                                                  _mm256_setr_epi8(0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+                                                                   4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7));
+        return _mm256_xor_si256(bytes, _mm256_set1_epi16(0x00ff));
+    }
+
+    // Prepare for 8 coverage bytes.
+    //---------------------------------
+    template <bool kOpaque>
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    Prepare8(uint64_t m) {
+        return UsesMadd<kOpaque>::value ? Weights8(m) : Spread8(m);
+    }
+
+    // PrepareBand for two bands of 4 columns, one in each half.
+    //---------------------------------
+    template <bool kOpaque>
+    FONTRENDERER_ALWAYS_INLINE void
+    PrepareBand(__m256i band, __m256i &row0, __m256i &row1, __m256i &row2, __m256i &row3) {
+        if (UsesMadd<kOpaque>::value) {
+            const __m256i inverse = _mm256_set1_epi16(0x00ff);
+            row0 = _mm256_xor_si256(_mm256_shuffle_epi8(band, BothHalves(_mm_setr_epi8( 0,  0,  0,  0,  1,  1,  1,  1,  2,  2,  2,  2,  3,  3,  3,  3))), inverse);
+            row1 = _mm256_xor_si256(_mm256_shuffle_epi8(band, BothHalves(_mm_setr_epi8( 4,  4,  4,  4,  5,  5,  5,  5,  6,  6,  6,  6,  7,  7,  7,  7))), inverse);
+            row2 = _mm256_xor_si256(_mm256_shuffle_epi8(band, BothHalves(_mm_setr_epi8( 8,  8,  8,  8,  9,  9,  9,  9, 10, 10, 10, 10, 11, 11, 11, 11))), inverse);
+            row3 = _mm256_xor_si256(_mm256_shuffle_epi8(band, BothHalves(_mm_setr_epi8(12, 12, 12, 12, 13, 13, 13, 13, 14, 14, 14, 14, 15, 15, 15, 15))), inverse);
+        }
+        else {
+            row0 = _mm256_shuffle_epi8(band, BothHalves(_mm_setr_epi8( 0, -1,  0, -1,  1, -1,  1, -1,  2, -1,  2, -1,  3, -1,  3, -1)));
+            row1 = _mm256_shuffle_epi8(band, BothHalves(_mm_setr_epi8( 4, -1,  4, -1,  5, -1,  5, -1,  6, -1,  6, -1,  7, -1,  7, -1)));
+            row2 = _mm256_shuffle_epi8(band, BothHalves(_mm_setr_epi8( 8, -1,  8, -1,  9, -1,  9, -1, 10, -1, 10, -1, 11, -1, 11, -1)));
+            row3 = _mm256_shuffle_epi8(band, BothHalves(_mm_setr_epi8(12, -1, 12, -1, 13, -1, 13, -1, 14, -1, 14, -1, 15, -1, 15, -1)));
+        }
+    }
+
+    // BlendCoverage, BlendWeights and BlendPrepared for 8 pixels.
+    //---------------------------------
+    template <bool kOpaque>
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    BlendCoverage(const Color8 &color, __m256i spread, __m256i pixels) {
+        const __m256i alpha = kOpaque ? spread : Div255(_mm256_mullo_epi16(spread, color.alpha));
+        const __m256i even  = Blend(_mm256_mullo_epi16(color.even, spread), alpha, EvenBytes(pixels));
+        const __m256i odd   = Blend(_mm256_mullo_epi16(color.odd,  spread), alpha, OddBytes(pixels));
+        return JoinBytes(even, odd);
+    }
+
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    BlendWeights(const Color8 &color, __m256i weights, __m256i pixels) {
+        const __m256i bias = _mm256_set1_epi16(int16_t(0x8000));
+        const __m256i even = _mm256_maddubs_epi16(weights, _mm256_xor_si256(EvenBytes(pixels), color.evenMadd));
+        const __m256i odd  = _mm256_maddubs_epi16(weights, _mm256_xor_si256(OddBytes(pixels),  color.oddMadd));
+        return JoinBytes(_mm256_mulhi_epu16(_mm256_xor_si256(even, bias), _mm256_set1_epi16(0x0101)),
+                         _mm256_mulhi_epu16(_mm256_xor_si256(odd,  bias), _mm256_set1_epi16(0x0101)));
+    }
+
+    //---------------------------------
+    template <bool kOpaque>
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    BlendPrepared(std::false_type, const Color8 &color, __m256i spread, __m256i pixels) {
+        return BlendCoverage<kOpaque>(color, spread, pixels);
+    }
+
+    //---------------------------------
+    template <bool kOpaque>
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    BlendPrepared(std::true_type, const Color8 &color, __m256i weights, __m256i pixels) {
+        return BlendWeights(color, weights, pixels);
+    }
+
+    // IsEmptyBand and IsFullBand for 32 coverage bytes.
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE bool
+    IsEmptyBand(__m256i band) {
+        return _mm256_testz_si256(band, band) != 0;
+    }
+
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE bool
+    IsFullBand(__m256i band) {
+        return _mm256_testc_si256(band, _mm256_set1_epi8(-1)) != 0;
+    }
+#endif
+
     // The coverage of 4 pixels in a row, a byte each. The texels of a rotated glyph are step bytes apart.
     //---------------------------------
     template <bool kRotated>
@@ -466,6 +685,18 @@ namespace {
         return _mm_unpacklo_epi16(first, second);
     }
 
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+    // The coverage of 4 rows in 8 columns: LoadBand of the first 4 columns in the low half, and of the other 4 in the
+    // high half.
+    //---------------------------------
+    FONTRENDERER_ALWAYS_INLINE __m256i
+    LoadWideBand(const uint8_t *column0, size_t step) {
+        const __m128i low  = LoadBand(column0, &column0[step], &column0[2 * step], &column0[3 * step]);
+        const __m128i high = LoadBand(&column0[4 * step], &column0[5 * step], &column0[6 * step], &column0[7 * step]);
+        return _mm256_inserti128_si256(_mm256_castsi128_si256(low), high, 1);
+    }
+#endif
+
     // 4 pixels at p with their coverage, from Prepare. none and full say that the 4 coverages are 0 or 255. With kSkip,
     // such a block is left as it is, or gets the color under an opaque text. With kRead, pixels are the pixels at p, read
     // before the row wrote anything. Without it, they are read here, after the shortcuts.
@@ -483,6 +714,24 @@ namespace {
 
         StoreQuad(p, BlendPrepared<kOpaque>(UsesMadd<kOpaque>(), color, prepared, kRead ? pixels : LoadQuad(p)));
     }
+
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+    // DrawCoverage for 8 pixels.
+    //---------------------------------
+    template <bool kOpaque, bool kSkip, bool kRead>
+    FONTRENDERER_ALWAYS_INLINE void
+    DrawCoverage(const Color8 &color, __m256i prepared, bool none, bool full, uint32_t *p, __m256i pixels) {
+        if (kSkip && none) {
+            return;
+        }
+        if (kSkip && kOpaque && full) {
+            StoreOctet(p, color.solid);
+            return;
+        }
+
+        StoreOctet(p, BlendPrepared<kOpaque>(UsesMadd<kOpaque>(), color, prepared, kRead ? pixels : LoadOctet(p)));
+    }
+#endif
 
     // One texel over one pixel. A transparent texel leaves the pixel as it is.
     //---------------------------------
@@ -651,7 +900,7 @@ namespace {
 
     //---------------------------------
     template <bool kOpaque, bool kSkip>
-    struct BgraRow {
+    struct BGRARow {
         const Color     &color;
         const uint8_t   *src;       // The texel of the first pixel of the row
         uint32_t        *dst;
@@ -708,6 +957,174 @@ namespace {
         }
     };
 
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+    // A row of BGRA32 in blocks of 8, as BGRARow draws it in blocks of 4.
+    //---------------------------------
+    template <bool kOpaque, bool kSkip>
+    struct BGRAOctetRow {
+        const Color8    &color;
+        const uint8_t   *src;       // The texel of the first pixel of the row
+        uint32_t        *dst;
+
+        //-----------------------------
+        template <bool kRead>
+        FONTRENDERER_ALWAYS_INLINE void
+        Draw(size_t x, __m256i pixels) const {
+            const __m256i texels = LoadOctet(&src[4 * x]);
+            if (kSkip && IsTransparent(texels)) {
+                return;
+            }
+
+            StoreOctet(&dst[x], BlendTexels<kOpaque>(color, texels, kRead ? pixels : LoadOctet(&dst[x])));
+        }
+
+        //-----------------------------
+        FONTRENDERER_ALWAYS_INLINE void
+        Octet(size_t x) const {
+            Draw<false>(x, _mm256_setzero_si256());
+        }
+
+        //-----------------------------
+        FONTRENDERER_ALWAYS_INLINE __m256i
+        ReadOctet(size_t x) const {
+            return LoadOctet(&dst[x]);
+        }
+
+        //-----------------------------
+        FONTRENDERER_ALWAYS_INLINE void
+        OctetRead(size_t x, __m256i pixels) const {
+            Draw<true>(x, pixels);
+        }
+    };
+
+    // A row of Alpha8 that is not rotated, in blocks of 8.
+    //---------------------------------
+    template <bool kOpaque, bool kSkip>
+    struct Alpha8OctetRow {
+        const Color8    &color;
+        const uint8_t   *mask;      // The coverage of the first pixel of the row
+        uint32_t        *dst;
+
+        //-----------------------------
+        template <bool kRead>
+        FONTRENDERER_ALWAYS_INLINE void
+        Draw(size_t x, __m256i pixels) const {
+            const uint64_t m = Load64(&mask[x]);
+            DrawCoverage<kOpaque, kSkip, kRead>(color, Prepare8<kOpaque>(m), m == 0, m == ~uint64_t(0), &dst[x], pixels);
+        }
+
+        //-----------------------------
+        FONTRENDERER_ALWAYS_INLINE void
+        Octet(size_t x) const {
+            Draw<false>(x, _mm256_setzero_si256());
+        }
+
+        //-----------------------------
+        FONTRENDERER_ALWAYS_INLINE __m256i
+        ReadOctet(size_t x) const {
+            return LoadOctet(&dst[x]);
+        }
+
+        //-----------------------------
+        FONTRENDERER_ALWAYS_INLINE void
+        OctetRead(size_t x, __m256i pixels) const {
+            Draw<true>(x, pixels);
+        }
+    };
+
+    // Alpha8Band in blocks of 8 columns, so each row of the band is one block of 8 pixels.
+    //---------------------------------
+    template <bool kOpaque, bool kSkip, bool kPartial>
+    struct Alpha8WideBand {
+        const Color8    &color;
+        const uint8_t   *mask;      // The coverage of the first pixel of the band
+        size_t          step;       // Between two columns of the glyph
+        uint32_t        *dst;
+        size_t          dstStride;
+        int32_t         firstRow;   // In a partial band, the rows before it belong to the band above
+
+        struct Rows {
+            __m256i     row0;
+            __m256i     row1;
+            __m256i     row2;
+            __m256i     row3;
+        };
+
+        //-----------------------------
+        FONTRENDERER_ALWAYS_INLINE bool
+        Draws(int32_t row) const {
+            return kPartial == false || row >= firstRow;
+        }
+
+        //-----------------------------
+        FONTRENDERER_ALWAYS_INLINE uint32_t *
+        At(int32_t row, size_t x) const {
+            return &dst[size_t(row) * dstStride + x];
+        }
+
+        //-----------------------------
+        template <bool kRead>
+        FONTRENDERER_ALWAYS_INLINE void
+        Draw(size_t x, const Rows &pixels) const {
+            const __m256i band = LoadWideBand(&mask[x * step], step);
+            if (kSkip) {
+                if (IsEmptyBand(band)) {
+                    return;
+                }
+                if (kOpaque && IsFullBand(band)) {
+                    if (Draws(0)) {
+                        StoreOctet(At(0, x), color.solid);
+                    }
+                    if (Draws(1)) {
+                        StoreOctet(At(1, x), color.solid);
+                    }
+                    if (Draws(2)) {
+                        StoreOctet(At(2, x), color.solid);
+                    }
+                    StoreOctet(At(3, x), color.solid);
+                    return;
+                }
+            }
+
+            __m256i prepared0, prepared1, prepared2, prepared3;
+            PrepareBand<kOpaque>(band, prepared0, prepared1, prepared2, prepared3);
+            if (Draws(0)) {
+                DrawCoverage<kOpaque, false, kRead>(color, prepared0, false, false, At(0, x), pixels.row0);
+            }
+            if (Draws(1)) {
+                DrawCoverage<kOpaque, false, kRead>(color, prepared1, false, false, At(1, x), pixels.row1);
+            }
+            if (Draws(2)) {
+                DrawCoverage<kOpaque, false, kRead>(color, prepared2, false, false, At(2, x), pixels.row2);
+            }
+            DrawCoverage<kOpaque, false, kRead>(color, prepared3, false, false, At(3, x), pixels.row3);
+        }
+
+        //-----------------------------
+        FONTRENDERER_ALWAYS_INLINE void
+        Octet(size_t x) const {
+            Draw<false>(x, Rows());
+        }
+
+        //-----------------------------
+        FONTRENDERER_ALWAYS_INLINE Rows
+        ReadOctet(size_t x) const {
+            Rows pixels;
+            pixels.row0 = LoadOctet(At(0, x));
+            pixels.row1 = LoadOctet(At(1, x));
+            pixels.row2 = LoadOctet(At(2, x));
+            pixels.row3 = LoadOctet(At(3, x));
+            return pixels;
+        }
+
+        //-----------------------------
+        FONTRENDERER_ALWAYS_INLINE void
+        OctetRead(size_t x, const Rows &pixels) const {
+            Draw<true>(x, pixels);
+        }
+    };
+#endif
+
     // A row of at least 4 pixels, or a band of 4 such rows. The last block is read before the row writes anything, and
     // the blocks before it are drawn as they come, so a row needs no branch on how many pixels are left.
     //---------------------------------
@@ -716,11 +1133,34 @@ namespace {
     DrawBlocks(const TLine &line, int32_t w) {
         const size_t tail   = size_t(w) - 4;
         const auto   pixels = line.ReadQuad(tail);
+        // Built for x86-64-v3, clang 19 unrolls this loop by two, and the rows of small text get slower. It does not
+        // unroll it for the other levels.
+#if defined(__clang__)
+        #pragma clang loop unroll(disable)
+#endif
         for (size_t x = 0; x < tail; x += 4) {
             line.Quad(x);
         }
         line.QuadRead(tail, pixels);
     }
+
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+    // DrawBlocks in blocks of 8, for a row of at least 8 pixels or a band of such rows.
+    //---------------------------------
+    template <class TLine>
+    FONTRENDERER_ALWAYS_INLINE void
+    DrawOctets(const TLine &line, int32_t w) {
+        const size_t tail   = size_t(w) - 8;
+        const auto   pixels = line.ReadOctet(tail);
+#if defined(__clang__)
+        #pragma clang loop unroll(disable)
+#endif
+        for (size_t x = 0; x < tail; x += 8) {
+            line.Octet(x);
+        }
+        line.OctetRead(tail, pixels);
+    }
+#endif
 
     // The clipping of DrawText can leave a width below 1, which draws nothing.
     //---------------------------------
@@ -734,6 +1174,26 @@ namespace {
             row.Narrow(w);
         }
     }
+
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+    // The bands of a rotated glyph at least 8 pixels wide and 4 tall, in blocks of 8 columns. Inside DrawAlpha8Rotated,
+    // next to the bands of 4 columns, MSVC 19.44 kept both colors in memory and read them for every block.
+    //---------------------------------
+    template <bool kOpaque, bool kSkip>
+    FONTRENDERER_NO_INLINE void
+    DrawAlpha8WideBands(const uint8_t *mask, size_t stepX, int32_t width, int32_t height, uint32_t *dst, uint32_t dstStride,
+                        uint32_t premultiplied, uint32_t alpha) {
+        const Color8 color = MakeColor8(premultiplied, alpha);
+        int32_t y = 0;
+        for (; y + 4 <= height; y += 4) {
+            DrawOctets(Alpha8WideBand<kOpaque, kSkip, false> { color, &mask[size_t(y)], stepX, &dst[size_t(y) * dstStride], dstStride, 0 }, width);
+        }
+        if (y < height) {
+            const int32_t top = height - 4;
+            DrawOctets(Alpha8WideBand<kOpaque, kSkip, true> { color, &mask[size_t(top)], stepX, &dst[size_t(top) * dstStride], dstStride, y - top }, width);
+        }
+    }
+#endif
 
     // A rotated glyph has a function of its own, one for each kSkip, so that the glyph function does not save the
     // registers it uses for every glyph. Its rows are drawn 4 at a time when the texels of a column are contiguous.
@@ -769,6 +1229,20 @@ namespace {
         }
     }
 
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+    // The rows of a glyph that is not rotated and is at least 8 pixels wide, in blocks of 8.
+    //---------------------------------
+    template <bool kOpaque, bool kSkip>
+    FONTRENDERER_ALWAYS_INLINE void
+    DrawAlpha8OctetRows(const uint8_t *mask, size_t stepY, int32_t width, int32_t height, uint32_t *dst, uint32_t dstStride,
+                        uint32_t premultiplied, uint32_t alpha) {
+        const Color8 color = MakeColor8(premultiplied, alpha);
+        for (int32_t y = 0; y < height; ++y) {
+            DrawOctets(Alpha8OctetRow<kOpaque, kSkip> { color, &mask[size_t(y) * stepY], &dst[size_t(y) * dstStride] }, width);
+        }
+    }
+#endif
+
     // GlyphDraw.cpp explains why these functions are never inlined.
     //---------------------------------
     template <bool kOpaque>
@@ -776,6 +1250,17 @@ namespace {
     DrawAlpha8(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
                uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t alpha) {
         const uint8_t *mask = &texture[offset];
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+        if (stepX != 1 && stepY == 1 && width >= 8 && height >= 4) {
+            if (UsesShortcuts<kOpaque>(width)) {
+                DrawAlpha8WideBands<kOpaque, true>(mask, stepX, width, height, dst, dstStride, premultiplied, alpha);
+            }
+            else {
+                DrawAlpha8WideBands<kOpaque, false>(mask, stepX, width, height, dst, dstStride, premultiplied, alpha);
+            }
+            return;
+        }
+#endif
         if (stepX != 1) {
             if (UsesShortcuts<kOpaque>(width)) {
                 DrawAlpha8Rotated<kOpaque, true>(mask, stepX, stepY, width, height, dst, dstStride, premultiplied, alpha);
@@ -785,6 +1270,18 @@ namespace {
             }
             return;
         }
+
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+        if (width >= 8) {
+            if (UsesShortcuts<kOpaque>(width)) {
+                DrawAlpha8OctetRows<kOpaque, true>(mask, stepY, width, height, dst, dstStride, premultiplied, alpha);
+            }
+            else {
+                DrawAlpha8OctetRows<kOpaque, false>(mask, stepY, width, height, dst, dstStride, premultiplied, alpha);
+            }
+            return;
+        }
+#endif
 
         const Color color = MakeColor(premultiplied, alpha);
         if (UsesShortcuts<kOpaque>(width)) {
@@ -799,7 +1296,7 @@ namespace {
     //---------------------------------
     template <bool kOpaque, bool kSkip>
     FONTRENDERER_ALWAYS_INLINE void
-    DrawBgraRows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
+    DrawBGRARows(const Color &color, const uint8_t *src, size_t stepX, size_t stepY, int32_t width, int32_t height,
                  uint32_t *dst, uint32_t dstStride) {
         if (stepX != 1) {
             for (int32_t y = 0; y < height; ++y) {
@@ -812,22 +1309,48 @@ namespace {
         }
 
         for (int32_t y = 0; y < height; ++y) {
-            DrawRow(BgraRow<kOpaque, kSkip> { color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride] }, width);
+            DrawRow(BGRARow<kOpaque, kSkip> { color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride] }, width);
         }
     }
+
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+    // The rows of a glyph that is not rotated and is at least 8 pixels wide, in blocks of 8.
+    //---------------------------------
+    template <bool kOpaque, bool kSkip>
+    FONTRENDERER_ALWAYS_INLINE void
+    DrawBGRAOctetRows(const uint8_t *src, size_t stepY, int32_t width, int32_t height, uint32_t *dst, uint32_t dstStride,
+                      uint32_t premultiplied, uint32_t alpha) {
+        const Color8 color = MakeColor8(premultiplied, alpha);
+        for (int32_t y = 0; y < height; ++y) {
+            DrawOctets(BGRAOctetRow<kOpaque, kSkip> { color, &src[size_t(y) * stepY * 4], &dst[size_t(y) * dstStride] }, width);
+        }
+    }
+#endif
 
     //---------------------------------
     template <bool kOpaque>
     FONTRENDERER_NO_INLINE void
-    DrawBgra(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
+    DrawBGRA(const uint8_t *texture, size_t offset, size_t stepX, size_t stepY, int32_t width, int32_t height,
              uint32_t *dst, uint32_t dstStride, uint32_t premultiplied, uint32_t alpha) {
-        const Color   color = MakeColor(premultiplied, alpha);
-        const uint8_t *src  = &texture[offset * 4];
+        const uint8_t *src = &texture[offset * 4];
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+        if (stepX == 1 && width >= 8) {
+            if (UsesShortcuts<kOpaque>(width)) {
+                DrawBGRAOctetRows<kOpaque, true>(src, stepY, width, height, dst, dstStride, premultiplied, alpha);
+            }
+            else {
+                DrawBGRAOctetRows<kOpaque, false>(src, stepY, width, height, dst, dstStride, premultiplied, alpha);
+            }
+            return;
+        }
+#endif
+
+        const Color color = MakeColor(premultiplied, alpha);
         if (UsesShortcuts<kOpaque>(width)) {
-            DrawBgraRows<kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
+            DrawBGRARows<kOpaque, true>(color, src, stepX, stepY, width, height, dst, dstStride);
         }
         else {
-            DrawBgraRows<kOpaque, false>(color, src, stepX, stepY, width, height, dst, dstStride);
+            DrawBGRARows<kOpaque, false>(color, src, stepX, stepY, width, height, dst, dstStride);
         }
     }
 
@@ -835,16 +1358,18 @@ namespace {
 
 //-------------------------------------
 GlyphDraw::DrawGlyphFunction
-#if defined(FONTRENDERER_GLYPHDRAW_X64V2)
+#if defined(FONTRENDERER_GLYPHDRAW_X64V3)
+GlyphDraw::GetX64v3DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
+#elif defined(FONTRENDERER_GLYPHDRAW_X64V2)
 GlyphDraw::GetX64v2DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
 #else
-GlyphDraw::GetSse2DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
+GlyphDraw::GetSSE2DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
 #endif
     if (bytesPerTexel == 1) {
         return opaque ? DrawAlpha8<true> : DrawAlpha8<false>;
     }
 
-    return opaque ? DrawBgra<true> : DrawBgra<false>;
+    return opaque ? DrawBGRA<true> : DrawBGRA<false>;
 }
 
 #endif
