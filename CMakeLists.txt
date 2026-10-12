@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(FontRenderer VERSION 0.7.0)
+project(FontRenderer VERSION 0.8.0)
 
 # Options
 #--------------------------------------
