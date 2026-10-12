@@ -15,7 +15,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <math.h>      // ::lround, as DJGPP has no std::lround
 #include <unordered_set>
 
 using namespace MindShake;
@@ -124,6 +123,15 @@ namespace {
             const uint8_t   *mData;
     };
 
+    // lround without the call to the C runtime that MSVC and clang-cl make. 0.49999997 is the float just below 0.5, and
+    // adding it to x.5 rounds up to x + 1: the same as lround for every float below 2^31, also with fast floating point.
+    // Not std::copysign, which DJGPP may not have; the pen is never negative, so the branch is always predicted.
+    //---------------------------------
+    inline int32_t
+    RoundPen(float penX) {
+        return int32_t(penX + ((penX < 0.0f) ? -0.49999997f : 0.49999997f));
+    }
+
     //---------------------------------
     bool
     WriteFile(const char *fileName, const std::vector<uint8_t> &bytes) {
@@ -141,25 +149,6 @@ namespace {
 //-------------------------------------
 FontBase::FontBase(const char *fileName) {
     mFileName = fileName;
-
-    // Trash data
-    mHeightData[0]          = {};
-    mCodePointHeightData[0] = {};
-}
-
-//-------------------------------------
-uint32_t
-FontBase::GetCodePointHeightKey(uint32_t codePoint, uint8_t height) {
-    CodePointHeight cph;
-    cph.codePoint = codePoint;
-    cph.height    = height;
-    return cph.value;
-}
-
-//-------------------------------------
-uint64_t
-FontBase::GetKerningKey(uint32_t leftGlyph, uint32_t rightGlyph) {
-    return (uint64_t(leftGlyph) << 32) | uint64_t(rightGlyph);
 }
 
 //-------------------------------------
@@ -195,38 +184,41 @@ FontBase::PremultiplyTexels(uint8_t *texels, size_t texelCount) {
 
 //-------------------------------------
 template <class TVisitor>
-void
+FONTRENDERER_ALWAYS_INLINE void
 FontBase::LayoutText(const char *utf8, uint8_t textHeight, TVisitor visit) {
-    const HeightData &heightData = GetDataForHeight(textHeight);
+    const HeightData heightData = GetDataForHeight(textHeight);
 
     float   penX     = 0.0f;
     int32_t baseline = heightData.ascent;
 
-    const uint8_t *text = reinterpret_cast<const uint8_t *>(utf8);
-    for (uint32_t codePoint = GetNextUTF32(&text), nextCodePoint; codePoint != 0; codePoint = nextCodePoint) {
-        nextCodePoint = GetNextUTF32(&text);
+    // Each character is looked up once, one ahead of the one laid out, and its glyph gives the kerning with that one.
+    // There is no kerning before a '\n' or before a character without a glyph.
+    auto lookUp = [&](uint32_t codePoint) -> const CodePointHeightData * {
+        return (codePoint != 0 && codePoint != '\n') ? &GetCodePointDataForHeight(codePoint, textHeight) : nullptr;
+    };
+
+    const uint8_t             *text     = reinterpret_cast<const uint8_t *>(utf8);
+    uint32_t                  codePoint = GetNextUTF32(&text);
+    const CodePointHeightData *data     = lookUp(codePoint);
+    while (codePoint != 0) {
+        const uint32_t            nextCodePoint = GetNextUTF32(&text);
+        const CodePointHeightData *nextData     = lookUp(nextCodePoint);
         if (codePoint == '\n') {
             penX      = 0.0f;
             baseline += heightData.GetLineAdvance();
-            continue;
+        }
+        else if (data->glyph > 0) {
+            visit(*data, penX, baseline);
+            float kerning = 0.0f;
+            if (nextData != nullptr && nextData->glyph > 0) {
+                kerning = float(GetKerning(data->glyph, nextData->glyph)) * heightData.scale;
+            }
+            penX += data->advanceWidth + kerning;
         }
 
-        const CodePointHeightData &data = GetCodePointDataForHeight(codePoint, textHeight);
-        if (data.glyph > 0) {
-            visit(data, penX, baseline);
-            penX += data.advanceWidth + GetScaledKerning(data.glyph, nextCodePoint, heightData.scale);
-        }
+        codePoint = nextCodePoint;
+        data      = nextData;
     }
-}
-
-//-------------------------------------
-float
-FontBase::GetScaledKerning(int glyph, uint32_t nextCodePoint, float scale) {
-    if (nextCodePoint == 0) {
-        return 0.0f;
-    }
-
-    return float(GetKerning(uint32_t(glyph), GetCodePointGlyph(nextCodePoint))) * scale;
 }
 
 //-------------------------------------
@@ -240,7 +232,8 @@ FontBase::DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_
     const uint32_t                     colorAlpha    = color >> 24;
     const GlyphDraw::DrawGlyphFunction drawGlyph     = GlyphDraw::GetDrawGlyphFunction(GetBytesPerTexel(mTextureFormat), colorAlpha == 255);
 
-    LayoutText(utf8, textHeight, [&](const CodePointHeightData &data, float penX, int32_t baseline) {
+    // By value, because only then clang inlines this lambda into the loop of LayoutText instead of calling it for each glyph.
+    LayoutText(utf8, textHeight, [this, posX, posY, dst, dstStride, premultiplied, colorAlpha, drawGlyph](const CodePointHeightData &data, float penX, int32_t baseline) {
         // Clip Top
         int32_t currentY = posY + baseline + data.y;
         int32_t minY     = 0;
@@ -255,7 +248,7 @@ FontBase::DrawText(const char *utf8, uint8_t textHeight, uint32_t color, uint32_
         }
 
         // Clip Left
-        int32_t currentX = posX + data.x + int32_t(::lround(penX));
+        int32_t currentX = posX + data.x + RoundPen(penX);
         int32_t minX     = 0;
         if (currentX < mLeft) {
             minX    += mLeft - currentX;
@@ -305,7 +298,7 @@ FontBase::GetTextBox(const char *utf8, uint8_t textHeight, Rect *rect) {
     int32_t minY = INT32_MAX, maxY = INT32_MIN;
 
     LayoutText(utf8, textHeight, [&](const CodePointHeightData &data, float penX, int32_t baseline) {
-        const int32_t roundedPenX = int32_t(::lround(penX));
+        const int32_t roundedPenX = RoundPen(penX);
         if (data.GetWidth() > 0) {
             const int32_t left = roundedPenX + data.x;
             const int32_t top  = baseline + data.y;
@@ -319,7 +312,7 @@ FontBase::GetTextBox(const char *utf8, uint8_t textHeight, Rect *rect) {
             minX = std::min(minX, roundedPenX);
         }
         // The advance counts too, so trailing spaces widen the box.
-        maxX = std::max(maxX, int32_t(::lround(penX + data.advanceWidth)));
+        maxX = std::max(maxX, RoundPen(penX + data.advanceWidth));
     });
 
     if (minX > maxX || minY > maxY) {
@@ -343,7 +336,7 @@ FontBase::GetGlyphQuads(const char *utf8, uint8_t textHeight, std::vector<GlyphQ
         }
 
         GlyphQuad quad;
-        quad.x           = int32_t(::lround(penX)) + data.x;
+        quad.x           = RoundPen(penX) + data.x;
         quad.y           = baseline + data.y;
         quad.width       = data.GetWidth();
         quad.height      = data.GetHeight();
@@ -357,11 +350,9 @@ FontBase::GetGlyphQuads(const char *utf8, uint8_t textHeight, std::vector<GlyphQ
 FontBase::EStatus
 FontBase::SaveMetrics(const char *fileName, uint32_t textureWidth, uint32_t textureHeight) const {
     std::vector<uint32_t> heights;
-    for (const auto &entry : mHeightData) {
-        if (entry.first != 0) {
-            heights.push_back(entry.first);
-        }
-    }
+    mHeightData.ForEach([&](uint32_t height, const HeightData &) {
+        heights.push_back(height);
+    });
     std::sort(heights.begin(), heights.end());
 
     // A glyph rendered at a height without metrics, as with a font whose metrics give a zero scale, cannot be drawn.
@@ -372,26 +363,25 @@ FontBase::SaveMetrics(const char *fileName, uint32_t textureWidth, uint32_t text
     };
     std::vector<Glyph>           glyphs;
     std::unordered_set<uint32_t> glyphIndices;
-    for (const auto &entry : mCodePointHeightData) {
+    mCodePointHeightData.ForEach([&](uint32_t key, const CodePointHeightData &data) {
         CodePointHeight cph;
-        cph.value = entry.first;
-        if (entry.second.glyph > 0 && mHeightData.count(cph.height) != 0) {
-            glyphs.push_back({ uint32_t(cph.codePoint), uint8_t(cph.height), &entry.second });
-            glyphIndices.insert(uint32_t(entry.second.glyph));
+        cph.value = key;
+        if (data.glyph > 0 && mHeightData.Find(cph.height) != nullptr) {
+            glyphs.push_back({ uint32_t(cph.codePoint), uint8_t(cph.height), &data });
+            glyphIndices.insert(data.glyph);
         }
-    }
+    });
     std::sort(glyphs.begin(), glyphs.end(), [](const Glyph &a, const Glyph &b) {
         return (a.codePoint != b.codePoint) ? a.codePoint < b.codePoint : a.height < b.height;
     });
 
-    std::vector<std::pair<uint64_t, int32_t>> kerning;
-    for (const auto &entry : mKerningData) {
-        const uint32_t left  = uint32_t(entry.first >> 32);
-        const uint32_t right = uint32_t(entry.first);
-        if (entry.second != 0 && glyphIndices.count(left) != 0 && glyphIndices.count(right) != 0) {
-            kerning.push_back(entry);
+    // Sorting by the key sorts by the left glyph, then by the right one.
+    std::vector<std::pair<uint32_t, int32_t>> kerning;
+    mKerningData.ForEach([&](uint32_t key, int32_t value) {
+        if (value != 0 && glyphIndices.count(key >> 16) != 0 && glyphIndices.count(key & 0xffff) != 0) {
+            kerning.push_back({ key, value });
         }
-    }
+    });
     std::sort(kerning.begin(), kerning.end());
 
     ByteWriter writer;
@@ -407,7 +397,7 @@ FontBase::SaveMetrics(const char *fileName, uint32_t textureWidth, uint32_t text
     writer.U32(uint32_t(kerning.size()));
 
     for (uint32_t height : heights) {
-        const HeightData &data = mHeightData.at(height);
+        const HeightData &data = *mHeightData.Find(height);
         writer.U8(uint8_t(height));
         writer.F32(data.scale);
         writer.I32(data.ascent);
@@ -419,9 +409,11 @@ FontBase::SaveMetrics(const char *fileName, uint32_t textureWidth, uint32_t text
         const CodePointHeightData &data = *glyph.data;
         writer.U32(glyph.codePoint);
         writer.U8(glyph.height);
-        writer.I32(data.glyph);
+        writer.U32(data.glyph);
         writer.F32(data.advanceWidth);
-        writer.I32(data.leftSideBearing);
+        // The file has a place for the left side bearing, which DrawText does not need: x already includes it.
+        // The place stays, so that the files that have a value there still load.
+        writer.I32(0);
         writer.I32(data.x);
         writer.I32(data.y);
         writer.I32(data.rect.x);
@@ -432,8 +424,8 @@ FontBase::SaveMetrics(const char *fileName, uint32_t textureWidth, uint32_t text
     }
 
     for (const auto &entry : kerning) {
-        writer.U32(uint32_t(entry.first >> 32));
-        writer.U32(uint32_t(entry.first));
+        writer.U32(entry.first >> 16);
+        writer.U32(entry.first & 0xffff);
         writer.I32(entry.second);
     }
 
@@ -479,7 +471,7 @@ FontBase::LoadMetrics(const char *fileName) {
         heightData.descent = reader.I32();
         heightData.lineGap = reader.I32();
         if (height == 0 || std::isfinite(heightData.scale) == false || heightData.scale <= 0.0f ||
-           mHeightData.insert({ height, heightData }).second == false) {
+           mHeightData.Insert(height, heightData) == false) {
             return EStatus::InvalidFont;
         }
     }
@@ -488,9 +480,9 @@ FontBase::LoadMetrics(const char *fileName) {
         const uint32_t      codePoint = reader.U32();
         const uint8_t       height    = reader.U8();
         CodePointHeightData glyph;
-        glyph.glyph           = reader.I32();
+        glyph.glyph           = reader.U32();
         glyph.advanceWidth    = reader.F32();
-        glyph.leftSideBearing = reader.I32();
+        reader.I32();           // The left side bearing, which SaveMetrics explains
         glyph.x               = reader.I32();
         glyph.y               = reader.I32();
         glyph.rect.x          = reader.I32();
@@ -504,18 +496,21 @@ FontBase::LoadMetrics(const char *fileName) {
         const bool  empty = rect.width == 0 && rect.height == 0;
         const bool  fits  = rect.x >= 0 && rect.y >= 0 && rect.width > 0 && rect.height > 0 &&
                             uint64_t(rect.x) + uint64_t(rect.width) <= textureWidth && uint64_t(rect.y) + uint64_t(rect.height) <= textureHeight;
-        if (codePoint == 0 || codePoint > kMaxCodePoint || mHeightData.count(height) == 0 || glyph.glyph <= 0 ||
+        // A font has at most 65535 glyphs, so the last index is 0xfffe.
+        if (codePoint == 0 || codePoint > kMaxCodePoint || mHeightData.Find(height) == nullptr || glyph.glyph == 0 || glyph.glyph >= 0xffff ||
            std::isfinite(glyph.advanceWidth) == false || rotated > 1 || (empty == false && fits == false) ||
-           mCodePointHeightData.insert({ GetCodePointHeightKey(codePoint, height), glyph }).second == false) {
+           mCodePointHeightData.Find(GetCodePointHeightKey(codePoint, height)) != nullptr) {
             return EStatus::InvalidFont;
         }
+        mCodePointHeightData.Insert(GetCodePointHeightKey(codePoint, height), glyph);
     }
 
     for (uint32_t i = 0; i < kerningCount; ++i) {
         const uint32_t left    = reader.U32();
         const uint32_t right   = reader.U32();
         const int32_t  kerning = reader.I32();
-        if (mKerningData.insert({ GetKerningKey(left, right), kerning }).second == false) {
+        // A font has at most 65535 glyphs, so 0xffff is not a glyph index either.
+        if (left >= 0xffff || right >= 0xffff || mKerningData.Insert(GetKerningKey(left, right), kerning) == false) {
             return EStatus::InvalidFont;
         }
     }

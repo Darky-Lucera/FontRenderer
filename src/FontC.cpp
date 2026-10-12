@@ -35,32 +35,32 @@
 static_assert(FR_FONT_MAX_TEXTURE_SIZE     == MindShake::Font::kMaxTextureSize,     "FR_FONT_MAX_TEXTURE_SIZE must match Font::kMaxTextureSize");
 static_assert(FR_FONT_MAX_ANTIALIAS_WEIGHT == MindShake::Font::kMaxAntialiasWeight, "FR_FONT_MAX_ANTIALIAS_WEIGHT must match Font::kMaxAntialiasWeight");
 
-static_assert(FR_STATUS_OK                == int(MindShake::Font::EStatus::Ok),             "fr_status must match Font::EStatus");
-static_assert(FR_STATUS_NOT_LOADED        == int(MindShake::Font::EStatus::NotLoaded),      "fr_status must match Font::EStatus");
-static_assert(FR_STATUS_CANNOT_OPEN_FILE  == int(MindShake::Font::EStatus::CannotOpenFile), "fr_status must match Font::EStatus");
-static_assert(FR_STATUS_CANNOT_READ_FILE  == int(MindShake::Font::EStatus::CannotReadFile), "fr_status must match Font::EStatus");
-static_assert(FR_STATUS_INVALID_FONT      == int(MindShake::Font::EStatus::InvalidFont),    "fr_status must match Font::EStatus");
-static_assert(FR_STATUS_OUT_OF_MEMORY     == int(MindShake::Font::EStatus::OutOfMemory),    "fr_status must match Font::EStatus");
+static_assert(FR_STATUS_OK                == int32_t(MindShake::Font::EStatus::Ok),             "fr_status must match Font::EStatus");
+static_assert(FR_STATUS_NOT_LOADED        == int32_t(MindShake::Font::EStatus::NotLoaded),      "fr_status must match Font::EStatus");
+static_assert(FR_STATUS_CANNOT_OPEN_FILE  == int32_t(MindShake::Font::EStatus::CannotOpenFile), "fr_status must match Font::EStatus");
+static_assert(FR_STATUS_CANNOT_READ_FILE  == int32_t(MindShake::Font::EStatus::CannotReadFile), "fr_status must match Font::EStatus");
+static_assert(FR_STATUS_INVALID_FONT      == int32_t(MindShake::Font::EStatus::InvalidFont),    "fr_status must match Font::EStatus");
+static_assert(FR_STATUS_OUT_OF_MEMORY     == int32_t(MindShake::Font::EStatus::OutOfMemory),    "fr_status must match Font::EStatus");
 
-static_assert(FR_FONT_TEXTURE_GROWTH_HEIGHT == int(MindShake::Font::ETextureGrowth::Height), "fr_font_texture_growth must match Font::ETextureGrowth");
-static_assert(FR_FONT_TEXTURE_GROWTH_WIDTH  == int(MindShake::Font::ETextureGrowth::Width),  "fr_font_texture_growth must match Font::ETextureGrowth");
-static_assert(FR_FONT_TEXTURE_GROWTH_BOTH   == int(MindShake::Font::ETextureGrowth::Both),   "fr_font_texture_growth must match Font::ETextureGrowth");
+static_assert(FR_FONT_TEXTURE_GROWTH_HEIGHT == int32_t(MindShake::Font::ETextureGrowth::Height), "fr_font_texture_growth must match Font::ETextureGrowth");
+static_assert(FR_FONT_TEXTURE_GROWTH_WIDTH  == int32_t(MindShake::Font::ETextureGrowth::Width),  "fr_font_texture_growth must match Font::ETextureGrowth");
+static_assert(FR_FONT_TEXTURE_GROWTH_BOTH   == int32_t(MindShake::Font::ETextureGrowth::Both),   "fr_font_texture_growth must match Font::ETextureGrowth");
 
-static_assert(FR_FONT_SIZE_MODE_LINE_HEIGHT == int(MindShake::Font::ESizeMode::LineHeight), "fr_font_size_mode must match Font::ESizeMode");
-static_assert(FR_FONT_SIZE_MODE_EM_SIZE     == int(MindShake::Font::ESizeMode::EmSize),     "fr_font_size_mode must match Font::ESizeMode");
+static_assert(FR_FONT_SIZE_MODE_LINE_HEIGHT == int32_t(MindShake::Font::ESizeMode::LineHeight), "fr_font_size_mode must match Font::ESizeMode");
+static_assert(FR_FONT_SIZE_MODE_EM_SIZE     == int32_t(MindShake::Font::ESizeMode::EmSize),     "fr_font_size_mode must match Font::ESizeMode");
 
-static_assert(FR_FONT_TEXTURE_FORMAT_ALPHA8 == int(MindShake::FontBase::ETextureFormat::Alpha8), "fr_font_texture_format must match FontBase::ETextureFormat");
-static_assert(FR_FONT_TEXTURE_FORMAT_BGRA32 == int(MindShake::FontBase::ETextureFormat::BGRA32), "fr_font_texture_format must match FontBase::ETextureFormat");
-static_assert(FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED == int(MindShake::FontBase::ETextureFormat::BGRA32Premultiplied), "fr_font_texture_format must match FontBase::ETextureFormat");
+static_assert(FR_FONT_TEXTURE_FORMAT_ALPHA8 == int32_t(MindShake::FontBase::ETextureFormat::Alpha8), "fr_font_texture_format must match FontBase::ETextureFormat");
+static_assert(FR_FONT_TEXTURE_FORMAT_BGRA32 == int32_t(MindShake::FontBase::ETextureFormat::BGRA32), "fr_font_texture_format must match FontBase::ETextureFormat");
+static_assert(FR_FONT_TEXTURE_FORMAT_BGRA32_PREMULTIPLIED == int32_t(MindShake::FontBase::ETextureFormat::BGRA32Premultiplied), "fr_font_texture_format must match FontBase::ETextureFormat");
 
-static_assert(FR_FONT_PACKING_LEVEL_BOTTOM_LEFT   == int(MindShake::Font::ELevelChoiceHeuristic::LevelBottomLeft),  "fr_font_packing_heuristic must match Font::ELevelChoiceHeuristic");
-static_assert(FR_FONT_PACKING_LEVEL_MIN_WASTE_FIT == int(MindShake::Font::ELevelChoiceHeuristic::LevelMinWasteFit), "fr_font_packing_heuristic must match Font::ELevelChoiceHeuristic");
+static_assert(FR_FONT_PACKING_LEVEL_BOTTOM_LEFT   == int32_t(MindShake::Font::ELevelChoiceHeuristic::LevelBottomLeft),  "fr_font_packing_heuristic must match Font::ELevelChoiceHeuristic");
+static_assert(FR_FONT_PACKING_LEVEL_MIN_WASTE_FIT == int32_t(MindShake::Font::ELevelChoiceHeuristic::LevelMinWasteFit), "fr_font_packing_heuristic must match Font::ELevelChoiceHeuristic");
 
 #if defined(FONTRENDERER_USE_FREETYPE)
-static_assert(FR_FONT_FT_HINTING_NONE   == int(MindShake::FontFT::EHinting::None),   "fr_font_ft_hinting must match FontFT::EHinting");
-static_assert(FR_FONT_FT_HINTING_LIGHT  == int(MindShake::FontFT::EHinting::Light),  "fr_font_ft_hinting must match FontFT::EHinting");
-static_assert(FR_FONT_FT_HINTING_NORMAL == int(MindShake::FontFT::EHinting::Normal), "fr_font_ft_hinting must match FontFT::EHinting");
-static_assert(FR_FONT_FT_HINTING_AUTO   == int(MindShake::FontFT::EHinting::Auto),   "fr_font_ft_hinting must match FontFT::EHinting");
+static_assert(FR_FONT_FT_HINTING_NONE   == int32_t(MindShake::FontFT::EHinting::None),   "fr_font_ft_hinting must match FontFT::EHinting");
+static_assert(FR_FONT_FT_HINTING_LIGHT  == int32_t(MindShake::FontFT::EHinting::Light),  "fr_font_ft_hinting must match FontFT::EHinting");
+static_assert(FR_FONT_FT_HINTING_NORMAL == int32_t(MindShake::FontFT::EHinting::Normal), "fr_font_ft_hinting must match FontFT::EHinting");
+static_assert(FR_FONT_FT_HINTING_AUTO   == int32_t(MindShake::FontFT::EHinting::Auto),   "fr_font_ft_hinting must match FontFT::EHinting");
 #endif
 
 //-------------------------------------

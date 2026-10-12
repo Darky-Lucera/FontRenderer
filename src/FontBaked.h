@@ -16,7 +16,6 @@
 #include "FontBase.h"
 //-------------------------------------
 #include <cstdint>
-#include <unordered_map>
 
 //-------------------------------------
 namespace MindShake {
@@ -37,18 +36,15 @@ namespace MindShake {
             FontBaked(const char *metricsFile, const uint8_t *texture, uint32_t width, uint32_t height, ETextureFormat format);
 
         protected:
-            // LoadMetrics, and the glyph of each code point, which GetCodePointGlyph needs.
-            EStatus                     LoadGlyphs(const char *metricsFile);
             EStatus                     LoadTexture(const char *textureFile);
             EStatus                     SetTexture(const uint8_t *texture, uint32_t width, uint32_t height, ETextureFormat format);
+            // A font that did not load has no glyphs, so that it lays out nothing.
+            void                        ClearIfNotLoaded();
 
-            const HeightData &          GetDataForHeight(uint8_t height) override;
-            const CodePointHeightData & GetCodePointDataForHeight(uint32_t codePoint, uint8_t height) override;
-            uint32_t                    GetCodePointGlyph(uint32_t codePoint) override;
-            int                         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
-
-        protected:
-            std::unordered_map<uint32_t, uint32_t>  mCodePointGlyphs;
+            HeightData                  GetDataForHeight(uint8_t height) override;
+            // The tables already have every glyph and every kerning pair that is not 0.
+            const CodePointHeightData & LoadCodePointDataForHeight(uint32_t, uint8_t) override  { return mMissingCodePointData; }
+            int32_t                     LoadKerning(uint32_t, uint32_t) override                { return 0;                     }
     };
 
 } // end of namespace

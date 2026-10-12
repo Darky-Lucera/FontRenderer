@@ -170,7 +170,7 @@ TEST_CASE_TEMPLATE("Font draws every glyph exactly as its rasterizer renders it"
         font.SetTextureGrowth(atlas.growth);
 
         for (int height : { 9, 23, 47, 64 }) {
-            const HeightData &heightData = font.GetDataForHeight(uint8_t(height));
+            const HeightData heightData = font.GetDataForHeight(uint8_t(height));
             for (uint32_t codePoint = 33; codePoint < 127; ++codePoint) {
                 CAPTURE(atlas.spacing);
                 CAPTURE(height);

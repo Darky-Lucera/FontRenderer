@@ -7,12 +7,13 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
+#include "FlatMap.h"
+#include "StableMap.h"
 #include "MappedFile.h"
 #include "SkylineBinPack.h"
 //-------------------------------------
 #include <cstdint>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 //-------------------------------------
@@ -21,27 +22,28 @@ namespace MindShake {
     //---------------------------------
     struct HeightData {
         float   scale;
-        int     ascent;
-        int     descent;
-        int     lineGap;
+        int32_t ascent;
+        int32_t descent;
+        int32_t lineGap;
 
-        int     GetLineAdvance() const  { return ascent - descent + lineGap; }
+        int32_t GetLineAdvance() const  { return ascent - descent + lineGap; }
     };
 
     //---------------------------------
     struct CodePointHeightData {
         using Rect = MindShake::SkylineBinPack::Rect;
 
-        int     glyph;              // It's convenient
-        float   advanceWidth;       // Kept fractional so the pen position does not accumulate rounding errors
-        int     leftSideBearing;
-        int     x, y;
-        Rect    rect;               // Area in the texture; a rotated glyph is stored transposed, so its width and height are swapped.
+        uint32_t    glyph;          // It's convenient
+        float       advanceWidth;   // Kept fractional so the pen position does not accumulate rounding errors
+        // From the pen position to the top-left of the glyph. x already includes the left side bearing, so the glyph
+        // does not keep it apart.
+        int32_t     x, y;
+        Rect        rect;           // Area in the texture; a rotated glyph is stored transposed, so its width and height are swapped.
                                     // Empty for glyphs without pixels, like the space, and for glyphs that did not fit in the texture.
-        bool    rotated {};
+        bool        rotated {};
 
-        int32_t GetWidth() const    { return rotated ? rect.height : rect.width;  }
-        int32_t GetHeight() const   { return rotated ? rect.width  : rect.height; }
+        int32_t     GetWidth() const    { return rotated ? rect.height : rect.width;  }
+        int32_t     GetHeight() const   { return rotated ? rect.width  : rect.height; }
     };
 
     //---------------------------------
@@ -78,9 +80,9 @@ namespace MindShake {
     //-------------------------------------
     class FontBase {
         protected:
-            using MapHeightData          = std::unordered_map<uint32_t, HeightData>;
-            using MapCodePointHeightData = std::unordered_map<uint32_t, CodePointHeightData>;
-            using MapKerning             = std::unordered_map<uint64_t, int32_t>;
+            using MapHeightData          = FlatMap<HeightData>;                // By height
+            using MapCodePointHeightData = StableMap<CodePointHeightData>;     // By GetCodePointHeightKey
+            using MapKerning             = FlatMap<int32_t>;                   // By GetKerningKey
 
         public:
             using Rect                   = SkylineBinPack::Rect;
@@ -148,12 +150,19 @@ namespace MindShake {
 
         protected:
             // Calls visit(data, penX, baseline) for each glyph of the text, with the pen position relative to the top-left of the text.
+            // Always inline: MSVC did not inline it into DrawText and GetTextBox, and the layout alone was up to 10 % slower.
             template <class TVisitor>
-            void                        LayoutText(const char *utf8, uint8_t textHeight, TVisitor visit);
-            float                       GetScaledKerning(int glyph, uint32_t nextCodePoint, float scale);
+            FONTRENDERER_ALWAYS_INLINE void LayoutText(const char *utf8, uint8_t textHeight, TVisitor visit);
+
+            // From the tables, or from LoadCodePointDataForHeight and LoadKerning when they do not have it. Always inline,
+            // as FlatMap::Find, because the layout calls them for each character.
+            const CodePointHeightData & GetCodePointDataForHeight(uint32_t codePoint, uint8_t height);
+            // In font units.
+            int32_t                     GetKerning(uint32_t leftGlyph, uint32_t rightGlyph);
 
             static uint32_t             GetCodePointHeightKey(uint32_t codePoint, uint8_t height);
-            static uint64_t             GetKerningKey(uint32_t leftGlyph, uint32_t rightGlyph);
+            // The glyph indices of TrueType and OpenType have 16 bits, so a pair fits in 32 bits.
+            static uint32_t             GetKerningKey(uint32_t leftGlyph, uint32_t rightGlyph) { return (leftGlyph << 16) | rightGlyph; }
             static EStatus              GetFileStatus(MappedFile::EError error);
             static uint32_t             GetBytesPerTexel(ETextureFormat format) { return (format == ETextureFormat::Alpha8) ? 1 : 4; }
             // Multiplies blue, green and red of each BGRA32 texel by its alpha, rounded as DrawText rounds.
@@ -165,11 +174,13 @@ namespace MindShake {
             EStatus                     LoadMetrics(const char *fileName);
 
         protected:
-            virtual const HeightData &          GetDataForHeight(uint8_t height) = 0;
-            virtual const CodePointHeightData & GetCodePointDataForHeight(uint32_t codePoint, uint8_t height) = 0;
-            virtual uint32_t                    GetCodePointGlyph(uint32_t codePoint) = 0;
-            // In font units.
-            virtual int                         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) = 0;
+            // A HeightData of zeros if the font has no data for that height.
+            virtual HeightData                  GetDataForHeight(uint8_t height) = 0;
+            // Called when mCodePointHeightData does not have the code point at that height. It can add it.
+            // mMissingCodePointData is the data of a code point without a glyph.
+            virtual const CodePointHeightData & LoadCodePointDataForHeight(uint32_t codePoint, uint8_t height) = 0;
+            // Called when mKerningData does not have the pair. It can add it.
+            virtual int32_t                     LoadKerning(uint32_t leftGlyph, uint32_t rightGlyph) = 0;
 
         protected:
             std::string            mFileName;
@@ -180,6 +191,7 @@ namespace MindShake {
             uint32_t               mTextureVersion {};
             MapHeightData          mHeightData;
             MapCodePointHeightData mCodePointHeightData;
+            CodePointHeightData    mMissingCodePointData {};
             MapKerning             mKerningData;
 
             int32_t                mLeft   { -0xffff };
@@ -189,6 +201,29 @@ namespace MindShake {
 
             EStatus                mStatus { EStatus::NotLoaded };
     };
+
+    //-------------------------------------
+    FONTRENDERER_ALWAYS_INLINE const CodePointHeightData &
+    FontBase::GetCodePointDataForHeight(uint32_t codePoint, uint8_t height) {
+        const CodePointHeightData *data = mCodePointHeightData.Find(GetCodePointHeightKey(codePoint, height));
+        return (data != nullptr) ? *data : LoadCodePointDataForHeight(codePoint, height);
+    }
+
+    //-------------------------------------
+    FONTRENDERER_ALWAYS_INLINE int32_t
+    FontBase::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
+        const int32_t *kerning = mKerningData.Find(GetKerningKey(leftGlyph, rightGlyph));
+        return (kerning != nullptr) ? *kerning : LoadKerning(leftGlyph, rightGlyph);
+    }
+
+    //-------------------------------------
+    FONTRENDERER_ALWAYS_INLINE uint32_t
+    FontBase::GetCodePointHeightKey(uint32_t codePoint, uint8_t height) {
+        CodePointHeight cph;
+        cph.codePoint = codePoint;
+        cph.height    = height;
+        return cph.value;
+    }
 
 } // end of namespace
 //-------------------------------------

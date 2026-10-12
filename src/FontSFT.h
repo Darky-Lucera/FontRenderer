@@ -28,9 +28,9 @@ namespace MindShake {
 
         protected:
             void                        GetFontVMetrics();
-            int                         GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
+            int32_t                     GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
 
-            const CodePointData &       GetCodePointData(uint32_t codePoint) override;
+            CodePointData               GetCodePointData(uint32_t codePoint) override;
             bool                        RasterizeGlyph(const CodePointData &codePointData, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) override;
 
         protected:

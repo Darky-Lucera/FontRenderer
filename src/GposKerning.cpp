@@ -139,7 +139,7 @@ namespace {
     }
 
     //---------------------------------
-    int
+    int32_t
     GetXAdvance(const Reader &reader, size_t valueRecord, uint16_t valueFormat) {
         if ((valueFormat & kXAdvance) == 0) {
             return 0;
@@ -150,7 +150,7 @@ namespace {
     // Returns false if the subtable does not have the pair, and then the next subtable of the lookup is tried.
     //---------------------------------
     bool
-    GetPairKerning(const Reader &reader, size_t subtable, uint16_t leftGlyph, uint16_t rightGlyph, int &kerning) {
+    GetPairKerning(const Reader &reader, size_t subtable, uint16_t leftGlyph, uint16_t rightGlyph, int32_t &kerning) {
         const int32_t coverageIndex = GetCoverageIndex(reader, reader.At(subtable, reader.U16(subtable + 2)), leftGlyph);
         if (coverageIndex < 0) {
             return false;
@@ -336,7 +336,7 @@ GposKerning::Load(const uint8_t *font, size_t size, size_t fontOffset) {
 }
 
 //-------------------------------------
-int
+int32_t
 GposKerning::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) const {
     if (leftGlyph > 0xffff || rightGlyph > 0xffff) {
         return 0;
@@ -346,12 +346,12 @@ GposKerning::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) const {
     // So the first script whose lookups have the pair decides, even if it gives 0.
     const Reader gpos(mGpos, mGposSize);
     for (const auto &lookups : mScripts) {
-        int  kerning = 0;
+        int32_t  kerning = 0;
         bool hasPair = false;
         for (const uint16_t lookup : lookups) {
             // Inside a lookup only the first subtable that has the pair applies, even if its value is 0.
             for (const uint32_t subtable : mLookups[lookup]) {
-                int value;
+                int32_t value;
                 if (GetPairKerning(gpos, subtable, uint16_t(leftGlyph), uint16_t(rightGlyph), value)) {
                     kerning += value;
                     hasPair  = true;

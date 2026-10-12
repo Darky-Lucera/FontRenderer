@@ -1,10 +1,11 @@
 @echo off
-rem Builds benchmarkDraw for Android, runs it on the phone that adb sees, and leaves the results in bin.
+rem Builds a benchmark for Android, runs it on the phone that adb sees, and leaves the results in bin.
 rem
-rem Usage: benchmarkAndroid.bat [--abi abi] [--core N] [benchmarkDraw arguments...]
-rem   --abi   Processor of the build: arm64-v8a by default, armeabi-v7a for a phone of 32 bits.
-rem   --core  Core where the benchmark runs. By default, the one with the highest maximum frequency.
-rem   The other arguments go to benchmarkDraw. The script already adds --csv.
+rem Usage: benchmarkAndroid.bat [--program name] [--abi abi] [--core N] [benchmark arguments...]
+rem   --program  benchmarkDraw by default, or benchmarkLayout.
+rem   --abi      Processor of the build: arm64-v8a by default, armeabi-v7a for a phone of 32 bits.
+rem   --core     Core where the benchmark runs. By default, the one with the highest maximum frequency.
+rem   The other arguments go to the benchmark. For benchmarkDraw the script already adds --csv.
 rem
 rem It needs the Android SDK with an NDK and a CMake (Android Studio, SDK Manager, SDK Tools).
 rem With several phones connected, set ANDROID_SERIAL to the serial number that "adb devices" shows.
@@ -14,17 +15,23 @@ setlocal EnableDelayedExpansion
 for %%p in ("%~dp0..\..") do set "ROOT=%%~fp"
 set "DEVICE_DIR=/data/local/tmp/fontrenderer"
 
+set "PROGRAM=benchmarkDraw"
 set "ABI=arm64-v8a"
 set "CORE=fastest"
 set "ARGS="
 set "NEXT="
 for %%a in (%*) do (
-    if "!NEXT!" == "abi" (
+    if "!NEXT!" == "program" (
+        set "PROGRAM=%%~a"
+        set "NEXT="
+    ) else if "!NEXT!" == "abi" (
         set "ABI=%%~a"
         set "NEXT="
     ) else if "!NEXT!" == "core" (
         set "CORE=%%~a"
         set "NEXT="
+    ) else if "%%~a" == "--program" (
+        set "NEXT=program"
     ) else if "%%~a" == "--abi" (
         set "NEXT=abi"
     ) else if "%%~a" == "--core" (
@@ -107,13 +114,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
-"%CMAKE_BIN%\cmake.exe" --build "%BUILD%" --target benchmarkDraw
+"%CMAKE_BIN%\cmake.exe" --build "%BUILD%" --target %PROGRAM%
 if errorlevel 1 (
     exit /b 1
 )
 
 adb shell mkdir -p %DEVICE_DIR%/resources
-adb push "%BUILD%\benchmarkDraw" %DEVICE_DIR%/benchmarkDraw
+adb push "%BUILD%\%PROGRAM%" %DEVICE_DIR%/%PROGRAM%
 adb push "%ROOT%\benchmarks\scripts\runOnDevice.sh" %DEVICE_DIR%/runOnDevice.sh
 adb push "%ROOT%\bin\resources\." %DEVICE_DIR%/resources/
 if errorlevel 1 (
@@ -122,13 +129,26 @@ if errorlevel 1 (
 
 rem The name comes from the core the benchmark will run on, so it is asked on that core. The phone is added because
 rem two phones can have the same chip.
-for /f "delims=" %%n in ('adb shell sh %DEVICE_DIR%/runOnDevice.sh %CORE% --name') do (
+for /f "delims=" %%n in ('adb shell sh %DEVICE_DIR%/runOnDevice.sh %CORE% %PROGRAM% --name') do (
     set "NAME=%%n_%MAKER%-%DEVICE%"
+)
+
+rem benchmarkLayout has no CSV and no chart page: it only writes text.
+if /i "%PROGRAM%" == "benchmarkLayout" (
+    set "OUTPUT=%ROOT%\bin\benchmark_layout_!NAME!.txt"
+    echo.
+    echo Running the benchmark. It writes !OUTPUT! when it ends.
+    adb shell sh %DEVICE_DIR%/runOnDevice.sh %CORE% %PROGRAM%%ARGS% > "!OUTPUT!"
+    if errorlevel 1 (
+        type "!OUTPUT!"
+        exit /b 1
+    )
+    exit /b 0
 )
 
 echo.
 echo Running the benchmark. It writes bin\benchmark_%NAME%.txt when it ends.
-adb shell sh %DEVICE_DIR%/runOnDevice.sh %CORE% --csv benchmark.csv%ARGS% > "%ROOT%\bin\benchmark_%NAME%.txt"
+adb shell sh %DEVICE_DIR%/runOnDevice.sh %CORE% %PROGRAM% --csv benchmark.csv%ARGS% > "%ROOT%\bin\benchmark_%NAME%.txt"
 if errorlevel 1 (
     type "%ROOT%\bin\benchmark_%NAME%.txt"
     exit /b 1

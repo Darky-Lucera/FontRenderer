@@ -24,8 +24,6 @@ constexpr int32_t Font::kMaxAntialiasWeight;
 
 //-------------------------------------
 Font::Font(const char *fileName) : FontBase(fileName) {
-    // Trash data
-    mCodePointData[0] = {};
 }
 
 //-------------------------------------
@@ -33,8 +31,7 @@ void
 Font::Reset() {
     mPacker.Reset();
 
-    mCodePointHeightData.clear();
-    mCodePointHeightData[0] = {};
+    mCodePointHeightData.Clear();
 
     std::fill(mTexture.begin(), mTexture.end(), uint8_t(0));
     ++mTextureVersion;
@@ -50,8 +47,7 @@ Font::SetSizeMode(ESizeMode mode) {
     mSizeMode = mode;
 
     // The scale of every height changes, so the cached metrics and the glyphs rendered with them are stale.
-    mHeightData.clear();
-    mHeightData[0] = {};
+    mHeightData.Clear();
     Reset();
 }
 
@@ -289,20 +285,15 @@ Font::GrowTexture() {
 }
 
 //-------------------------------------
-int
-Font::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
-    const uint64_t key = GetKerningKey(leftGlyph, rightGlyph);
-
-    auto it = mKerningData.find(key);
-    if (it == mKerningData.end()) {
-        it = mKerningData.insert({ key, LookUpKerning(leftGlyph, rightGlyph) }).first;
-    }
-
-    return it->second;
+int32_t
+Font::LoadKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
+    const int32_t kerning = LookUpKerning(leftGlyph, rightGlyph);
+    mKerningData.Insert(GetKerningKey(leftGlyph, rightGlyph), kerning);
+    return kerning;
 }
 
 //-------------------------------------
-int
+int32_t
 Font::LookUpKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
     // GPOS wins over the 'kern' table when it has kerning, as in HarfBuzz. FreeType prefers 'kern', but fonts keep it
     // for old software, and it often has only part of the pairs, because it cannot store classes of glyphs.
@@ -311,8 +302,8 @@ Font::LookUpKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
 }
 
 //-------------------------------------
-int
-Font::ApplyAntialias(std::unique_ptr<uint8_t[]> &pixels, int &width, int &height) {
+int32_t
+Font::ApplyAntialias(std::unique_ptr<uint8_t[]> &pixels, int32_t &width, int32_t &height) {
     assert(width > 0 && height > 0);
     if (mAntialiasEnabled == false) {
         return 0;
@@ -467,64 +458,58 @@ Font::AntialiasBlockEx(uint8_t *src, uint32_t width, uint32_t height, uint8_t *d
 }
 
 //-------------------------------------
-const HeightData &
+HeightData
 Font::GetDataForHeight(uint8_t height) {
     if (mStatus != EStatus::Ok) {
-        return mHeightData[0];
+        return {};
     }
 
-    auto hd = mHeightData.find(height);
-    if (hd == mHeightData.end()) {
-        const int reference = (mSizeMode == ESizeMode::EmSize) ? mUnitsPerEm : (mAscent - mDescent);
-        if (reference <= 0) {
-            return mHeightData[0];
-        }
-
-        HeightData  heightData;
-
-        heightData.scale   = float(height) / float(reference);
-        heightData.ascent  = int(std::ceil(float(mAscent)  * heightData.scale));
-        // The descent is negative: floor rounds it outwards so descenders are not clipped by the next line.
-        heightData.descent = int(std::floor(float(mDescent) * heightData.scale));
-        heightData.lineGap = int(::lround(float(mLineGap) * heightData.scale));
-
-        hd = mHeightData.insert({height, heightData}).first;
+    const HeightData *data = mHeightData.Find(height);
+    if (data != nullptr) {
+        return *data;
     }
 
-    return hd->second;
+    const int32_t reference = (mSizeMode == ESizeMode::EmSize) ? mUnitsPerEm : (mAscent - mDescent);
+    if (reference <= 0) {
+        return {};
+    }
+
+    HeightData  heightData;
+
+    heightData.scale   = float(height) / float(reference);
+    heightData.ascent  = int32_t(std::ceil(float(mAscent)  * heightData.scale));
+    // The descent is negative: floor rounds it outwards so descenders are not clipped by the next line.
+    heightData.descent = int32_t(std::floor(float(mDescent) * heightData.scale));
+    heightData.lineGap = int32_t(::lround(float(mLineGap) * heightData.scale));
+
+    mHeightData.Insert(height, heightData);
+    return heightData;
 }
 
 //-------------------------------------
 const CodePointHeightData &
-Font::GetCodePointDataForHeight(uint32_t codePoint, uint8_t height) {
+Font::LoadCodePointDataForHeight(uint32_t codePoint, uint8_t height) {
     if (mStatus != EStatus::Ok) {
-        return mCodePointHeightData[0];
+        return mMissingCodePointData;
     }
 
-    const uint32_t key = GetCodePointHeightKey(codePoint, height);
-
-    auto cphd = mCodePointHeightData.find(key);
-    if (cphd == mCodePointHeightData.end()) {
-        CodePointHeightData data;
-        GlyphBitmap         bitmap;
-        if (RenderGlyph(codePoint, height, data, bitmap) == false) {
-            return mCodePointHeightData[0];
-        }
-
-        if (bitmap.pixels != nullptr) {
-            PackGlyph(bitmap.pixels.get(), uint32_t(bitmap.width), uint32_t(bitmap.height), data);
-        }
-
-        cphd = mCodePointHeightData.insert({key, data}).first;
+    CodePointHeightData data;
+    GlyphBitmap         bitmap;
+    if (RenderGlyph(codePoint, height, data, bitmap) == false) {
+        return mMissingCodePointData;
     }
 
-    return cphd->second;
+    if (bitmap.pixels != nullptr) {
+        PackGlyph(bitmap.pixels.get(), uint32_t(bitmap.width), uint32_t(bitmap.height), data);
+    }
+
+    return mCodePointHeightData.Insert(GetCodePointHeightKey(codePoint, height), data);
 }
 
 //-------------------------------------
 bool
 Font::RenderGlyph(uint32_t codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) {
-    const CodePointData &codePointData = GetCodePointData(codePoint);
+    const CodePointData codePointData = GetCodePointData(codePoint);
     if (codePointData.glyph == 0) {
         return false;
     }
@@ -535,7 +520,7 @@ Font::RenderGlyph(uint32_t codePoint, uint8_t height, CodePointHeightData &data,
 
     data.glyph = codePointData.glyph;
     if (bitmap.pixels != nullptr) {
-        const int grown = ApplyAntialias(bitmap.pixels, bitmap.width, bitmap.height);
+        const int32_t grown = ApplyAntialias(bitmap.pixels, bitmap.width, bitmap.height);
         data.x -= grown;
         data.y -= grown;
         ApplyPadding(bitmap, data);
@@ -547,16 +532,16 @@ Font::RenderGlyph(uint32_t codePoint, uint8_t height, CodePointHeightData &data,
 //-------------------------------------
 void
 Font::ApplyPadding(GlyphBitmap &bitmap, CodePointHeightData &data) {
-    const int left   = int(mGlyphPaddingLeft);
-    const int top    = int(mGlyphPaddingTop);
-    const int width  = bitmap.width  + left + int(mGlyphPaddingRight);
-    const int height = bitmap.height + top  + int(mGlyphPaddingBottom);
+    const int32_t left   = int32_t(mGlyphPaddingLeft);
+    const int32_t top    = int32_t(mGlyphPaddingTop);
+    const int32_t width  = bitmap.width  + left + int32_t(mGlyphPaddingRight);
+    const int32_t height = bitmap.height + top  + int32_t(mGlyphPaddingBottom);
     if (width == bitmap.width && height == bitmap.height) {
         return;
     }
 
     auto pixels = std::make_unique<uint8_t[]>(size_t(width) * size_t(height));
-    for (int y = 0; y < bitmap.height; ++y) {
+    for (int32_t y = 0; y < bitmap.height; ++y) {
         memcpy(&pixels[size_t(y + top) * size_t(width) + size_t(left)], &bitmap.pixels[size_t(y) * size_t(bitmap.width)], size_t(bitmap.width));
     }
 
@@ -589,7 +574,7 @@ Font::Preload(const char *utf8, uint8_t textHeight) {
     const uint8_t *text = reinterpret_cast<const uint8_t *>(utf8);
     for (uint32_t codePoint = GetNextUTF32(&text); codePoint != 0; codePoint = GetNextUTF32(&text)) {
         const uint32_t key = GetCodePointHeightKey(codePoint, textHeight);
-        if (codePoint == '\n' || mCodePointHeightData.count(key) != 0 || seen.insert(key).second == false) {
+        if (codePoint == '\n' || mCodePointHeightData.Find(key) != nullptr || seen.insert(key).second == false) {
             continue;
         }
 
@@ -600,7 +585,7 @@ Font::Preload(const char *utf8, uint8_t textHeight) {
         }
 
         if (glyph.bitmap.pixels == nullptr) {
-            mCodePointHeightData.insert({ key, glyph.data });
+            mCodePointHeightData.Insert(key, glyph.data);
         }
         else {
             pending.push_back(std::move(glyph));
@@ -647,7 +632,7 @@ Font::Preload(const char *utf8, uint8_t textHeight) {
     }
 
     for (const Pending &glyph : pending) {
-        mCodePointHeightData.insert({ glyph.key, glyph.data });
+        mCodePointHeightData.Insert(glyph.key, glyph.data);
     }
 
     return allFit;
@@ -661,23 +646,23 @@ Font::LoadAllKerningPairs() {
     }
 
     std::unordered_set<uint32_t> glyphs;
-    for (const auto &entry : mCodePointHeightData) {
-        if (entry.second.glyph > 0) {
-            glyphs.insert(uint32_t(entry.second.glyph));
+    mCodePointHeightData.ForEach([&](uint32_t, const CodePointHeightData &data) {
+        if (data.glyph > 0) {
+            glyphs.insert(data.glyph);
         }
-    }
+    });
 
     // Pairs without kerning are not cached: n * n entries would take too much memory.
     for (uint32_t left : glyphs) {
         for (uint32_t right : glyphs) {
-            const uint64_t key = GetKerningKey(left, right);
-            if (mKerningData.count(key) != 0) {
+            const uint32_t key = GetKerningKey(left, right);
+            if (mKerningData.Find(key) != nullptr) {
                 continue;
             }
 
-            const int kerning = LookUpKerning(left, right);
+            const int32_t kerning = LookUpKerning(left, right);
             if (kerning != 0) {
-                mKerningData.insert({ key, kerning });
+                mKerningData.Insert(key, kerning);
             }
         }
     }

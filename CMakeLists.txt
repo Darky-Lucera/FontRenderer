@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(FontRenderer VERSION 0.8.0)
+project(FontRenderer VERSION 0.9.0 LANGUAGES C CXX)
 
 # Options
 #--------------------------------------
@@ -148,6 +148,7 @@ endif()
 # Library
 #--------------------------------------
 set(SRC_FontRenderer
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FlatMap.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontBase.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FontC.h
@@ -158,6 +159,7 @@ set(SRC_FontRenderer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MappedFile.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Platform.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SkylineBinPack.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/StableMap.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Tga.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Tga.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/UTF8_Utils.h
@@ -475,6 +477,7 @@ if (FONTRENDERER_BUILD_TESTS)
     enable_testing()
 
     set(SRC_UnitTests
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/testFlatMap.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testGlyphDraw.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testMain.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/testTga.cpp
@@ -764,6 +767,29 @@ if (FONTRENDERER_BUILD_BENCHMARKS AND FONTRENDERER_HAS_RASTERIZER)
 
         if (DJGPP)
             set_target_properties(benchmarkRaster PROPERTIES OUTPUT_NAME "benchrst")
+        endif()
+
+        # How long the layout of DrawText takes, and copies of it that look up the glyphs and the kerning in other ways.
+        add_executable(benchmarkLayout
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkLayout.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkSystem.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmarkSystem.h
+        )
+
+        fontrenderer_setup_target(benchmarkLayout)
+
+        target_compile_definitions(benchmarkLayout
+        PRIVATE
+            FONT_RENDERER_BENCHMARK_RESOURCES="${FONTRENDERER_BENCHMARK_RESOURCES}"
+        )
+
+        target_link_libraries(benchmarkLayout
+        PRIVATE
+            fontRenderer
+        )
+
+        if (DJGPP)
+            set_target_properties(benchmarkLayout PROPERTIES OUTPUT_NAME "benchlay")
         endif()
     endif()
 endif()

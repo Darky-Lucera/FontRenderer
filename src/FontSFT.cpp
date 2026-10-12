@@ -56,40 +56,39 @@ FontSFT::GetFontVMetrics() {
 }
 
 //-------------------------------------
-const CodePointData &
+CodePointData
 FontSFT::GetCodePointData(uint32_t codePoint) {
     if (mStatus != EStatus::Ok) {
-        return mCodePointData[0];
+        return {};
     }
 
-    auto cpd = mCodePointData.find(codePoint);
-    if (cpd == mCodePointData.end()) {
-        SFT_Glyph gid {};
-        SFT       sft {};
-        sft.xScale = mUnitsPerEm;
-        sft.yScale = sft.xScale;
-        sft.flags  = SFT_DOWNWARD_Y;
-        sft.font   = mFont.get();
-        if (sft_lookup(&sft, codePoint, &gid) < 0) {
-            return mCodePointData[0];
-        }
-        else {
-            CodePointData   codePointData;
-            SFT_GMetrics    metrics;
-
-            if (sft_gmetrics(&sft, gid, &metrics) != 0) {
-                return mCodePointData[0];
-            }
-
-            codePointData.glyph = gid;
-            codePointData.advanceWidth = metrics.advanceWidth;
-            codePointData.leftSideBearing = metrics.leftSideBearing;
-
-            cpd = mCodePointData.insert({codePoint, codePointData}).first;
-        }
+    const CodePointData *found = mCodePointData.Find(codePoint);
+    if (found != nullptr) {
+        return *found;
     }
 
-    return cpd->second;
+    SFT_Glyph gid {};
+    SFT       sft {};
+    sft.xScale = mUnitsPerEm;
+    sft.yScale = sft.xScale;
+    sft.flags  = SFT_DOWNWARD_Y;
+    sft.font   = mFont.get();
+    if (sft_lookup(&sft, codePoint, &gid) < 0) {
+        return {};
+    }
+
+    CodePointData   codePointData;
+    SFT_GMetrics    metrics;
+
+    if (sft_gmetrics(&sft, gid, &metrics) != 0) {
+        return {};
+    }
+
+    codePointData.glyph = uint32_t(gid);
+    codePointData.advanceWidth = metrics.advanceWidth;
+
+    mCodePointData.Insert(codePoint, codePointData);
+    return codePointData;
 }
 
 //-------------------------------------
@@ -105,13 +104,12 @@ FontSFT::RasterizeGlyph(const CodePointData &codePointData, uint8_t height, Code
         return false;
     }
 
-    data.x               = metrics.xOffset;
-    data.y               = metrics.yOffset;
-    data.leftSideBearing = int(floor(metrics.leftSideBearing));
-    data.advanceWidth    = float(metrics.advanceWidth);
+    data.x            = metrics.xOffset;
+    data.y            = metrics.yOffset;
+    data.advanceWidth = float(metrics.advanceWidth);
 
-    int w = metrics.minWidth;
-    int h = metrics.minHeight;
+    int32_t w = metrics.minWidth;
+    int32_t h = metrics.minHeight;
     // A glyph without an outline has no size. With a zero scale, only libschrift's extra row and column are left.
     if (w > 1 && h > 1) {
         auto pixels = std::make_unique<uint8_t[]>(size_t(w) * size_t(h));
@@ -125,9 +123,9 @@ FontSFT::RasterizeGlyph(const CodePointData &codePointData, uint8_t height, Code
 
         // libschrift sizes the image from the bounding box stored in the font, plus one row and column
         // that stay empty unless the outline exceeds that box. Drop them so both backends clip the same way.
-        const int trimmedWidth  = w - 1;
-        const int trimmedHeight = h - 1;
-        for (int y = 1; y < trimmedHeight; ++y) {
+        const int32_t trimmedWidth  = w - 1;
+        const int32_t trimmedHeight = h - 1;
+        for (int32_t y = 1; y < trimmedHeight; ++y) {
             memmove(&pixels[size_t(y) * size_t(trimmedWidth)], &pixels[size_t(y) * size_t(w)], size_t(trimmedWidth));
         }
 
@@ -140,7 +138,7 @@ FontSFT::RasterizeGlyph(const CodePointData &codePointData, uint8_t height, Code
 }
 
 //-------------------------------------
-int
+int32_t
 FontSFT::GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
     SFT sft {};
     sft.xScale = mUnitsPerEm;
@@ -149,5 +147,5 @@ FontSFT::GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
     sft.flags  = SFT_DOWNWARD_Y;
 
     SFT_Kerning kerning {};
-    return (sft_kerning(&sft, leftGlyph, rightGlyph, &kerning) < 0) ? 0 : int(kerning.xShift);
+    return (sft_kerning(&sft, leftGlyph, rightGlyph, &kerning) < 0) ? 0 : int32_t(kerning.xShift);
 }

@@ -191,7 +191,7 @@ Kerning that depends on more than two glyphs needs a text shaper like HarfBuzz, 
 
 ## Platforms
 
-Tested on Windows, Linux, the web (Emscripten) and DOS (DJGPP, in DOSBox-X). It also builds for Android. macOS and iOS use the same POSIX code, but they are not tested.
+Tested on Windows, Linux, Android (arm64 phones and the x86_64 emulator), the web (Emscripten) and DOS (DJGPP, in DOSBox-X). macOS and iOS use the same POSIX code, but they are not tested.
 
 DOS support is minimal. DOS cannot map files, so the whole font is loaded into memory, and rasterizing TrueType glyphs is slow on computers of that time. On DOS, a [baked font](#baked-fonts) is a better choice: build only `FONTRENDERER_USE_BAKED`, and save the font on another computer. The example also needs long file names (`lfn = true` in DOSBox-X) to find its font file.
 
@@ -213,7 +213,7 @@ You have two options:
   |`FONTRENDERER_X86_64_V3`|`OFF`|Only for x86 of 64 bits. The library has a copy of the drawing for x86-64-v3 (AVX2). Against x86-64-v2, its glyphs draw between 4% slower and 12% faster at 14 pixels, between 11% and 50% faster at 40 pixels, and between 29% and 53% faster with BGRA32 textures. `OFF` uses that copy only when the processor has the level. `ON` builds the whole library for x86-64-v3, whatever `FONTRENDERER_X86_64_V2` says, and stops the program at start, with a message, on a processor without that level. The comment of the option in `CMakeLists.txt` has the details|
   |`FONTRENDERER_BUILD_EXAMPLES`|`ON` only when FontRenderer is the main project|The examples, which show every backend that is on. The [effects example](#the-effects-example) also needs `FONTRENDERER_USE_BAKED`. They download MiniFB, unless the project that adds FontRenderer already has a `minifb` target|
   |`FONTRENDERER_BUILD_TESTS`|`ON` only when FontRenderer is the main project|The unit tests|
-  |`FONTRENDERER_BUILD_BENCHMARKS`|`OFF`|The benchmarks of the drawing code, `benchmarkDraw`, and of the rasterizers, `benchmarkRaster`. See [Benchmarks](#benchmarks)|
+  |`FONTRENDERER_BUILD_BENCHMARKS`|`OFF`|The benchmarks of the drawing code, `benchmarkDraw`, of the layout, `benchmarkLayout`, and of the rasterizers, `benchmarkRaster`. See [Benchmarks](#benchmarks)|
 
   At least one backend must be on. The library defines `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` and `FONTRENDERER_USE_BAKED` for each backend that is on, also for the code that uses the library. The header of each backend, like `FontSTB.h`, stops the build if its macro is not defined.
 
@@ -224,6 +224,7 @@ You have two options:
 
   - CpuX86.h
   - CpuX86.cpp
+  - FlatMap.h
   - FontBase.h
   - FontBase.cpp
   - GlyphDraw.h
@@ -236,6 +237,7 @@ You have two options:
   - MappedFile.cpp
   - Platform.h
   - SkylineBinPack.h
+  - StableMap.h
   - Tga.h
   - Tga.cpp
   - UTF8_Utils.h
@@ -301,6 +303,8 @@ The drawing code picks the fastest level that the processor has. On seven x86 pr
 
 The larger the glyphs, the more the wider registers help. At 14 pixels each row of a glyph is short, so the three levels draw at about the same speed.
 
+The layout, what `DrawText` does for each character besides drawing the glyph, keeps its glyphs and its kerning in hash tables of its own. With text of 14 pixels, `DrawText` is 41 to 72 % faster than with the layout of version 0.8.0 on an i7-10850H, depending on the compiler, and 33 to 35 % faster on two Android phones.
+
 `benchmarkDraw` measures how fast the text is drawn in 18 scenarios: Roboto at 14, 24, 40 and 96 pixels, with and without rotated glyphs, with an opaque and a translucent color, and the baked Lilita One with effects, which has a color texture. Build it in Release with `-DFONTRENDERER_BUILD_BENCHMARKS=ON`. It reads its fonts from `bin/resources`.
 
 ```text
@@ -311,9 +315,11 @@ Without arguments it measures every variant in every scenario. `--scenario` keep
 
 The scripts are in `benchmarks/scripts`. `benchmark.bat` on Windows and `benchmark.sh` on macOS and Linux run the benchmark of `bin` and save its results there, as text, CSV and an HTML page with charts. They pass their arguments to `benchmarkDraw`. The files are named after the system, the compiler, the architecture and the processor, like `benchmark_windows_gcc15_x64_i7-10850h.txt`, so that runs on other computers or with other compilers do not replace each other. [plot_benchmark.py](benchmarks/scripts/plot_benchmark.py) makes the HTML page, and it can also put several CSV files in one page to compare them. It only needs Python.
 
+`benchmarkLayout` measures the layout: what `DrawText` does for each character besides drawing the glyph, which is between a fifth and a quarter of its time with text of 14 pixels. It compares `GetTextBox` and `DrawText` with copies of their layout, among them the layout of earlier versions, with the tables in `std::unordered_map`. It also draws the text one short line per call, as a user interface draws its labels, and it measures the lookups in the tables alone.
+
 `benchmarkRaster` measures how long each backend takes to render the glyphs, which `benchmarkDraw` leaves out: the 191 printable characters of ASCII and Latin-1, with Roboto and DejaVu Serif Condensed Bold Italic, at 14, 24, 40 and 96 pixels. For each case it prints the median and the minimum time of 15 samples, and a checksum of the texture, which tells whether two builds render the same pixels.
 
-On Windows, `benchmarkAndroid.bat` builds the benchmark for Android with the NDK and the CMake of the Android SDK, runs it on the phone that `adb` sees, and saves the results in `bin`. The phone needs USB debugging. While the benchmark runs, the script keeps the screen on and pins the benchmark to the fastest core that Android lets it use: with the screen off, phones slow down their big cores, and they move programs between big and small cores. `--core N` picks another core, and `--abi armeabi-v7a` builds for a phone of 32 bits.
+On Windows, `benchmarkAndroid.bat` builds the benchmark for Android with the NDK and the CMake of the Android SDK, runs it on the phone that `adb` sees, and saves the results in `bin`. The phone needs USB debugging. While the benchmark runs, the script keeps the screen on and pins the benchmark to the fastest core that Android lets it use: with the screen off, phones slow down their big cores, and they move programs between big and small cores. `--core N` picks another core, `--abi armeabi-v7a` builds for a phone of 32 bits, and `--program benchmarkLayout` runs the benchmark of the layout instead of `benchmarkDraw`.
 
 The same code placed somewhere else in the program can run up to 10 % faster or slower. Trust a difference only if it is clear and it repeats in two runs.
 

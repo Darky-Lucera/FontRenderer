@@ -45,12 +45,12 @@ namespace {
         const uint8_t  *texels = font.GetTexture();
         int            errors  = 0;
 
-        for (const auto &entry : font.mCodePointHeightData) {
-            if (entry.second.glyph <= 0 || entry.second.GetWidth() == 0) {
-                continue;
+        font.mCodePointHeightData.ForEach([&](uint32_t, const CodePointHeightData &data) {
+            if (data.glyph == 0 || data.GetWidth() == 0) {
+                return;
             }
 
-            const Font::Rect &rect = entry.second.rect;
+            const Font::Rect &rect = data.rect;
             for (int y = rect.Top() - spacing; y < rect.Bottom() + spacing; ++y) {
                 for (int x = rect.Left() - spacing; x < rect.Right() + spacing; ++x) {
                     if (x < 0 || y < 0 || x >= width || y >= height) {
@@ -63,7 +63,7 @@ namespace {
                     }
                 }
             }
-        }
+        });
 
         return errors;
     }
@@ -356,9 +356,9 @@ TEST_CASE("Font without rotation never stores a glyph transposed") {
 
     RenderAscii(font, { 9, 23, 47, 64 });
     int rotated = 0;
-    for (const auto &entry : font.mCodePointHeightData) {
-        rotated += entry.second.rotated ? 1 : 0;
-    }
+    font.mCodePointHeightData.ForEach([&](uint32_t, const CodePointHeightData &data) {
+        rotated += data.rotated ? 1 : 0;
+    });
     CHECK(rotated == 0);
 }
 
@@ -421,7 +421,7 @@ TEST_CASE_TEMPLATE("Font size modes", TFont, FONT_BACKENDS) {
 
     for (int height = 8; height <= 96; height += 8) {
         CAPTURE(height);
-        const HeightData &lineHeight = font.GetDataForHeight(uint8_t(height));
+        const HeightData lineHeight = font.GetDataForHeight(uint8_t(height));
         // Ascent and descent are rounded outwards, so the line can be one pixel taller.
         CHECK(lineHeight.ascent - lineHeight.descent >= height);
         CHECK(lineHeight.ascent - lineHeight.descent <= height + 1);
@@ -508,12 +508,12 @@ TEST_CASE_TEMPLATE("Font used texture size covers every glyph", TFont, FONT_BACK
         CHECK(usedHeight <= int(font.GetTextureHeight()));
 
         int outside = 0;
-        for (const auto &entry : font.mCodePointHeightData) {
-            const Font::Rect &rect = entry.second.rect;
-            if (entry.second.glyph > 0 && (rect.Right() + spacing > usedWidth || rect.Bottom() + spacing > usedHeight)) {
+        font.mCodePointHeightData.ForEach([&](uint32_t, const CodePointHeightData &data) {
+            const Font::Rect &rect = data.rect;
+            if (data.glyph > 0 && (rect.Right() + spacing > usedWidth || rect.Bottom() + spacing > usedHeight)) {
                 ++outside;
             }
-        }
+        });
         CHECK(outside == 0);
         CHECK(CountSpacingErrors(font) == 0);
     }
@@ -631,11 +631,11 @@ TEST_CASE_TEMPLATE("Font loads the kerning of every pair of rendered glyphs", TF
             const uint32_t leftGlyph  = font.GetCodePointGlyph(uint32_t(left));
             const uint32_t rightGlyph = font.GetCodePointGlyph(uint32_t(right));
             const int      kerning    = font.LookUpKerning(leftGlyph, rightGlyph);
-            const auto     cached     = font.mKerningData.find((uint64_t(leftGlyph) << 32) | rightGlyph);
+            const int32_t  *cached    = font.mKerningData.Find(font.GetKerningKey(leftGlyph, rightGlyph));
             // Pairs without kerning are not kept.
-            CHECK((cached != font.mKerningData.end()) == (kerning != 0));
-            if (cached != font.mKerningData.end()) {
-                CHECK(cached->second == kerning);
+            CHECK((cached != nullptr) == (kerning != 0));
+            if (cached != nullptr) {
+                CHECK(*cached == kerning);
                 ++kernedPairs;
             }
         }

@@ -1,15 +1,16 @@
 #!/system/bin/sh
-# Runs benchmarkDraw on the device, pinned to one core.
-# Usage: runOnDevice.sh <core|fastest> [benchmarkDraw arguments...]
+# Runs a benchmark on the device, pinned to one core.
+# Usage: runOnDevice.sh <core|fastest> <benchmarkDraw|benchmarkLayout> [arguments of the benchmark...]
 #
 # Phones mix big and small cores. If Android moves the process from one to another in the middle of a
 # measure, the time is wrong, so the benchmark always runs on the same core.
 
 cd "$(dirname "$0")" || exit 1
-chmod 755 ./benchmarkDraw
 
 core=$1
-shift
+program=$2
+shift 2
+chmod 755 "./$program"
 
 # With the screen off, Android lowers the maximum frequency of the big cores and parks some of them.
 # Some phones do not let adb change the setting that keeps the screen on, so a loop wakes it again and
@@ -33,7 +34,7 @@ MaxFreq() {
 
 if ! command -v taskset >/dev/null 2>&1; then
     echo "No taskset: the benchmark is not pinned to one core" >&2
-    ./benchmarkDraw "$@"
+    "./$program" "$@"
     exit $?
 fi
 
@@ -72,5 +73,5 @@ for path in /sys/devices/system/cpu/cpu[0-9]*; do
 done
 taskset -p "$(printf '%x' $others)" "$waker" >/dev/null 2>&1
 
-taskset "$(printf '%x' $((1 << core)))" ./benchmarkDraw "$@"
+taskset "$(printf '%x' $((1 << core)))" "./$program" "$@"
 exit $?

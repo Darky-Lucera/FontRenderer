@@ -159,31 +159,29 @@ FontFT::SetStemDarkening(bool enabled) {
 }
 
 //-------------------------------------
-const CodePointData &
+CodePointData
 FontFT::GetCodePointData(uint32_t codePoint) {
     if (mStatus != EStatus::Ok) {
-        return mCodePointData[0];
+        return {};
     }
 
-    auto cpd = mCodePointData.find(codePoint);
-    if (cpd == mCodePointData.end()) {
-        FT_Face       face  = mFace.get();
-        const FT_UInt glyph = FT_Get_Char_Index(face, codePoint);
-        if (glyph == 0 || FT_Load_Glyph(face, glyph, FT_LOAD_NO_SCALE) != 0) {
-            cpd = mCodePointData.find(0);   // Trash
-            cpd->second = {};
-        }
-        else {
-            CodePointData codePointData;
-            codePointData.glyph           = int(glyph);
-            codePointData.advanceWidth    = int(face->glyph->metrics.horiAdvance);
-            codePointData.leftSideBearing = int(face->glyph->metrics.horiBearingX);
-
-            cpd = mCodePointData.insert({codePoint, codePointData}).first;
-        }
+    const CodePointData *found = mCodePointData.Find(codePoint);
+    if (found != nullptr) {
+        return *found;
     }
 
-    return cpd->second;
+    FT_Face       face  = mFace.get();
+    const FT_UInt glyph = FT_Get_Char_Index(face, codePoint);
+    if (glyph == 0 || FT_Load_Glyph(face, glyph, FT_LOAD_NO_SCALE) != 0) {
+        return {};
+    }
+
+    CodePointData codePointData;
+    codePointData.glyph        = glyph;
+    codePointData.advanceWidth = int32_t(face->glyph->metrics.horiAdvance);
+
+    mCodePointData.Insert(codePoint, codePointData);
+    return codePointData;
 }
 
 //-------------------------------------
@@ -208,24 +206,23 @@ FontFT::RasterizeGlyph(const CodePointData &codePointData, uint8_t height, CodeP
 
     data.x               = slot->bitmap_left;
     data.y               = -slot->bitmap_top;
-    data.leftSideBearing = int(floor(codePointData.leftSideBearing * scale));
     // Normal and Auto hinting fit each glyph to an advance of whole pixels, so the text must use that advance.
     // Light hinting leaves the fractional advance of the outline, as FreeType recommends.
     const bool roundsAdvances = (mHinting == EHinting::Normal || mHinting == EHinting::Auto);
     data.advanceWidth    = roundsAdvances ? float(slot->advance.x) / 64.0f : float(codePointData.advanceWidth) * scale;
 
-    const int w = int(source.width);
-    const int h = int(source.rows);
+    const int32_t w = int32_t(source.width);
+    const int32_t h = int32_t(source.rows);
     if (w > 0 && h > 0) {
         // A FreeType bitmap can pad its rows, and a negative pitch stores them from the bottom up.
         // A monochrome bitmap has one bit per pixel, the leftmost pixel in the highest bit.
         auto         pixels = std::make_unique<uint8_t[]>(size_t(w) * size_t(h));
         const size_t pitch  = size_t(std::abs(source.pitch));
-        for (int y = 0; y < h; ++y) {
+        for (int32_t y = 0; y < h; ++y) {
             const uint8_t *row    = source.buffer + size_t((source.pitch >= 0) ? y : h - 1 - y) * pitch;
             uint8_t       *target = &pixels[size_t(y) * size_t(w)];
             if (source.pixel_mode == FT_PIXEL_MODE_MONO) {
-                for (int x = 0; x < w; ++x) {
+                for (int32_t x = 0; x < w; ++x) {
                     target[x] = (row[x >> 3] & (0x80 >> (x & 7))) ? 255 : 0;
                 }
             }
@@ -243,11 +240,11 @@ FontFT::RasterizeGlyph(const CodePointData &codePointData, uint8_t height, CodeP
 }
 
 //-------------------------------------
-int
+int32_t
 FontFT::GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
     FT_Vector kerning {};
     if (FT_Get_Kerning(mFace.get(), leftGlyph, rightGlyph, FT_KERNING_UNSCALED, &kerning) != 0) {
         return 0;
     }
-    return int(kerning.x);
+    return int32_t(kerning.x);
 }

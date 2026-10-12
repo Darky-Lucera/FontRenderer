@@ -14,30 +14,28 @@
 //-------------------------------------
 #include <cstdint>
 #include <memory>
-#include <unordered_map>
 
 //-------------------------------------
 namespace MindShake {
 
     //---------------------------------
     struct CodePointData {
-        int     glyph;
-        int     advanceWidth;
-        int     leftSideBearing;
+        uint32_t    glyph;
+        int32_t     advanceWidth;   // In font units
     };
 
     // A font that renders its glyphs from a font file the first time they are drawn.
     //-------------------------------------
     class Font : public FontBase {
         protected:
-            using MapCodePointData       = std::unordered_map<int32_t, CodePointData>;
+            using MapCodePointData       = FlatMap<CodePointData>;             // By code point
             using SkylineBinPack         = MindShake::SkylineBinPack;
 
             //-------------------------
             struct GlyphBitmap {
                 std::unique_ptr<uint8_t[]>  pixels;
-                int                         width  {};
-                int                         height {};
+                int32_t                     width  {};
+                int32_t                     height {};
             };
 
         public:
@@ -138,23 +136,23 @@ namespace MindShake {
             bool                        RenderGlyph(uint32_t codePoint, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap);
             float                       GetScaleForHeight(uint8_t height)   { return GetDataForHeight(height).scale;    }
             // Without the cache of mKerningData.
-            int                         LookUpKerning(uint32_t leftGlyph, uint32_t rightGlyph);
+            int32_t                     LookUpKerning(uint32_t leftGlyph, uint32_t rightGlyph);
             // Returns how many pixels the glyph grew on each side.
-            int                         ApplyAntialias(std::unique_ptr<uint8_t[]> &pixels, int &width, int &height);
+            int32_t                     ApplyAntialias(std::unique_ptr<uint8_t[]> &pixels, int32_t &width, int32_t &height);
             void                        ApplyPadding(GlyphBitmap &bitmap, CodePointHeightData &data);
             void                        AntialiasBlock(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
             void                        AntialiasBlockEx(uint8_t *src, uint32_t width, uint32_t height, uint8_t *dst, uint32_t dstStride);
 
-            const HeightData &          GetDataForHeight(uint8_t height) override;
-            const CodePointHeightData & GetCodePointDataForHeight(uint32_t codePoint, uint8_t height) override;
-            uint32_t                    GetCodePointGlyph(uint32_t codePoint) override { return GetCodePointData(codePoint).glyph; }
-            int                         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
+            HeightData                  GetDataForHeight(uint8_t height) override;
+            const CodePointHeightData & LoadCodePointDataForHeight(uint32_t codePoint, uint8_t height) override;
+            int32_t                     LoadKerning(uint32_t leftGlyph, uint32_t rightGlyph) override;
 
         protected:
             // Only used when GposKerning has nothing to read.
-            virtual int                         GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) = 0;
+            virtual int32_t                     GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) = 0;
 
-            virtual const CodePointData &       GetCodePointData(uint32_t codePoint) = 0;
+            // A CodePointData of zeros if the font has no glyph for the code point.
+            virtual CodePointData               GetCodePointData(uint32_t codePoint) = 0;
             // Fills the position and the advance of data, and the coverage of the glyph in bitmap,
             // which stays empty for a glyph without pixels. Returns false if it cannot render the glyph.
             virtual bool                        RasterizeGlyph(const CodePointData &codePointData, uint8_t height, CodePointHeightData &data, GlyphBitmap &bitmap) = 0;
@@ -162,10 +160,10 @@ namespace MindShake {
         protected:
             MappedFile             mFontFile;       // The backends point into it. As a base class member, it is destroyed after their members
             SkylineBinPack         mPacker;
-            int                    mAscent  {};
-            int                    mDescent {};
-            int                    mLineGap {};
-            int                    mUnitsPerEm {};
+            int32_t                mAscent  {};
+            int32_t                mDescent {};
+            int32_t                mLineGap {};
+            int32_t                mUnitsPerEm {};
             MapCodePointData       mCodePointData;
             GposKerning            mGposKerning;    // Points into mFontFile
 
@@ -177,9 +175,9 @@ namespace MindShake {
             uint32_t               mGlyphPaddingRight  {};
             uint32_t               mGlyphPaddingBottom {};
             ELevelChoiceHeuristic  mPackingHeuristic { ELevelChoiceHeuristic::LevelBottomLeft };
-            int32_t                mAntialiasCenter { 20 };
-            int32_t                mAntialiasBorder {  4 };
-            int32_t                mAntialiasCorner {  1 };
+            int32_t                mAntialiasCenter  { 20 };
+            int32_t                mAntialiasBorder  {  4 };
+            int32_t                mAntialiasCorner  {  1 };
             bool                   mAntialiasEnabled { false };
             bool                   mAntialiasAllowEx { false };
     };

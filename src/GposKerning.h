@@ -25,7 +25,7 @@ namespace MindShake {
             bool        HasKerning() const      { return mScripts.empty() == false; }
 
             // In font units. Only the advance of the first glyph counts, which is where kerning goes in horizontal text.
-            int         GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) const;
+            int32_t     GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) const;
 
         protected:
             const uint8_t                       *mGpos {};

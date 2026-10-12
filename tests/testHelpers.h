@@ -32,9 +32,9 @@ namespace MindShake { namespace Test {
             explicit Inspectable(const char *fileName = kFontPath) : TFont(fileName) { }
 
             using TFont::GetCodePointDataForHeight;
-            using TFont::GetCodePointGlyph;
             using TFont::GetDataForHeight;
             using TFont::GetKerning;
+            using TFont::GetKerningKey;
             using TFont::LookUpKerning;
             using TFont::PackGlyph;
             using TFont::mAscent;
@@ -43,8 +43,8 @@ namespace MindShake { namespace Test {
             using TFont::mKerningData;
             using TFont::mUnitsPerEm;
 
-            // Entry 0 is the placeholder returned for missing glyphs.
-            size_t GetGlyphCount() const { return mCodePointHeightData.size() - 1; }
+            size_t      GetGlyphCount() const                       { return mCodePointHeightData.GetCount();                 }
+            uint32_t    GetCodePointGlyph(uint32_t codePoint)       { return this->GetCodePointData(codePoint).glyph; }
     };
 
 }} // end of namespace
