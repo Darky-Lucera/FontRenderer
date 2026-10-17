@@ -75,7 +75,7 @@
 #include "GlyphDraw.h"
 
 // With the whole library built for x86-64-v2, only the build of GlyphDrawX64v2.cpp draws.
-#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_GLYPHDRAW_X64V2) || !defined(FONTRENDERER_X86_64_V2))
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_GLYPHDRAW_X64V2) || !defined(FONTRENDERER_USE_X86_64_V2))
 
 #if defined(FONTRENDERER_GLYPHDRAW_X64V3)
     #include <immintrin.h>      // AVX2, which includes SSE4.1

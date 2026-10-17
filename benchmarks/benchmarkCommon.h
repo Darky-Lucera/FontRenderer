@@ -135,10 +135,10 @@ namespace Benchmark {
     namespace Baseline {
         void    Draw(Scenario &scenario, uint32_t *dst);
         void    DrawScalar(Scenario &scenario, uint32_t *dst);
-#if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_X86_64_V2)
+#if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_USE_X86_64_V2)
         void    DrawSse2(Scenario &scenario, uint32_t *dst);
 #endif
-#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_USE_X86_64_V2) || defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME))
         void    DrawX64v2(Scenario &scenario, uint32_t *dst);
 #endif
     }
@@ -375,6 +375,15 @@ namespace Benchmark {
         void    DrawNoNarrow(Scenario &scenario, uint32_t *dst);
         void    DrawBranchless(Scenario &scenario, uint32_t *dst);
         void    DrawSkip(Scenario &scenario, uint32_t *dst);
+    }
+#endif
+
+    // The variants with WebAssembly SIMD, which are only built with -msimd128.
+#if defined(__wasm_simd128__)
+    namespace Wasm {
+        void    Draw(Scenario &scenario, uint32_t *dst);
+        void    DrawMulhi(Scenario &scenario, uint32_t *dst);
+        void    DrawBitmask(Scenario &scenario, uint32_t *dst);
     }
 #endif
 

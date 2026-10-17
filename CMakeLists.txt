@@ -18,7 +18,7 @@ option(FONTRENDERER_USE_STB          "Build the stb_truetype backend"           
 option(FONTRENDERER_USE_LIBSCHRIFT   "Build the libschrift backend"                         ON)
 option(FONTRENDERER_USE_FREETYPE     "Build the FreeType backend"                           OFF)
 option(FONTRENDERER_USE_BAKED        "Build the backend that reads baked fonts"             ON)
-option(FONTRENDERER_DISABLE_SIMD     "Draw only with the scalar code, no SSE2 or NEON"      OFF)
+option(FONTRENDERER_DISABLE_SIMD     "Draw only with the scalar code, no SIMD"              OFF)
 
 # x86-64-v2 adds SSE3, SSSE3, SSE4.1, SSE4.2 and POPCNT to the default x86-64 level, which already includes SSE and
 # SSE2. Intel processors have it since Nehalem (2008), and AMD ones since Bulldozer (2011). The Steam Hardware Survey of
@@ -32,7 +32,7 @@ option(FONTRENDERER_DISABLE_SIMD     "Draw only with the scalar code, no SSE2 or
 # ON builds the whole library for x86-64-v2. On a processor without it, the library stops the program at start, with a
 # message. OFF builds the library for the default x86-64 level, plus a second copy of the drawing for x86-64-v2, which
 # it only uses when cpuid says that the processor has the level. Only 64-bit x86 builds use the option.
-option(FONTRENDERER_X86_64_V2        "Build the library for x86-64-v2; OFF only uses it in the drawing, if the processor has it" ON)
+option(FONTRENDERER_USE_X86_64_V2    "Build the library for x86-64-v2; OFF only uses it in the drawing, if the processor has it" ON)
 
 # x86-64-v3 adds AVX, AVX2, BMI1, BMI2, FMA, F16C, LZCNT and MOVBE to x86-64-v2. Intel processors have it since Haswell
 # (2013), except some Pentium and Celeron, and AMD ones since Excavator (2015). It is common in 2026, but less than
@@ -45,10 +45,16 @@ option(FONTRENDERER_X86_64_V2        "Build the library for x86-64-v2; OFF only 
 # level added little in the measures, and lets the compiler use FMA in the rasterizers, which can change a glyph by one
 # level in some pixel.
 #
-# ON builds the whole library for x86-64-v3, whatever FONTRENDERER_X86_64_V2 says, and stops the program at start, with a
-# message, on a processor without the level. OFF builds that copy for x86-64-v3 alone, and the library only uses it
+# ON builds the whole library for x86-64-v3, whatever FONTRENDERER_USE_X86_64_V2 says, and stops the program at start,
+# with a message, on a processor without the level. OFF builds that copy for x86-64-v3 alone, and the library only uses it
 # when cpuid says that the processor has the level. Only 64-bit x86 builds use the option.
-option(FONTRENDERER_X86_64_V3        "Build the library for x86-64-v3; OFF only uses it in the drawing, if the processor has it" OFF)
+option(FONTRENDERER_USE_X86_64_V3    "Build the library for x86-64-v3; OFF only uses it in the drawing, if the processor has it" OFF)
+
+# WebAssembly SIMD drew the glyphs between 31 and 380% faster than the scalar code, in Chrome, Firefox and Edge on x86
+# and in Chrome on two ARM phones. Chrome 91 and Firefox 89 have it since 2021, and Safari 16.4 since 2023. A browser
+# without it cannot load a module that has any SIMD instruction, so ON adds -msimd128 to the library and to the programs
+# that link it, as MiniFB does. Turn it OFF for browsers without WebAssembly SIMD. Only Emscripten builds use the option.
+option(FONTRENDERER_USE_WASM_SIMD    "Draw with WebAssembly SIMD in Emscripten builds"      ON)
 
 if (FONTRENDERER_USE_STB OR FONTRENDERER_USE_LIBSCHRIFT OR FONTRENDERER_USE_FREETYPE)
     set(FONTRENDERER_HAS_RASTERIZER ON)
@@ -77,7 +83,7 @@ if (FONTRENDERER_BUILD_EXAMPLES AND NOT TARGET minifb)
     set(MINIFB_BUILD_VERSION_INFO OFF)
     FetchContent_Declare(minifb
         GIT_REPOSITORY https://github.com/emoon/minifb.git
-        GIT_TAG        v0.14.0
+        GIT_TAG        v0.16.0
         GIT_SHALLOW    TRUE
     )
     FetchContent_MakeAvailable(minifb)
@@ -96,7 +102,7 @@ if (FONTRENDERER_USE_FREETYPE)
         set(SKIP_INSTALL_ALL    ON)
         FetchContent_Declare(freetype
             GIT_REPOSITORY https://github.com/freetype/freetype.git
-            GIT_TAG        VER-2-14-3
+            GIT_TAG        VER-2-15-0
             GIT_SHALLOW    TRUE
         )
         FetchContent_MakeAvailable(freetype)
@@ -217,9 +223,9 @@ endif()
 
 # The level of the whole library: v3, v2, or empty for the default x86-64 level.
 set(FONTRENDERER_LIBRARY_LEVEL "")
-if (FONTRENDERER_X86_64_V3 AND FONTRENDERER_X86_64_V3_FLAGS)
+if (FONTRENDERER_USE_X86_64_V3 AND FONTRENDERER_X86_64_V3_FLAGS)
     set(FONTRENDERER_LIBRARY_LEVEL "v3")
-elseif (FONTRENDERER_X86_64_V2 AND FONTRENDERER_X86_64_V2_FLAGS)
+elseif (FONTRENDERER_USE_X86_64_V2 AND FONTRENDERER_X86_64_V2_FLAGS)
     set(FONTRENDERER_LIBRARY_LEVEL "v2")
 endif()
 
@@ -286,6 +292,14 @@ check_cxx_source_compiles([=[
 if (NOT FONTRENDERER_DISABLE_SIMD AND NOT FONTRENDERER_TARGET_WITHOUT_ARM)
     list(APPEND SRC_FontRenderer
         ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawNeon.cpp
+    )
+endif()
+
+# Without -msimd128 this file builds nothing. It is in every Emscripten build, so that a program can still pass the
+# option itself with FONTRENDERER_USE_WASM_SIMD off.
+if (NOT FONTRENDERER_DISABLE_SIMD AND EMSCRIPTEN)
+    list(APPEND SRC_FontRenderer
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/GlyphDrawWasm.cpp
     )
 endif()
 
@@ -385,11 +399,24 @@ if (FONTRENDERER_USE_BAKED)
     )
 endif()
 
-# Public, because the header that declares the drawing functions leaves out the SSE2 and NEON ones with it.
+# Public, because the header that declares the drawing functions leaves out the SIMD ones with it.
 if (FONTRENDERER_DISABLE_SIMD)
     target_compile_definitions(fontRenderer
     PUBLIC
         FONTRENDERER_DISABLE_SIMD
+    )
+endif()
+
+# Public, because the whole program needs it: a browser without WebAssembly SIMD cannot load a module that has any.
+if (NOT FONTRENDERER_DISABLE_SIMD AND FONTRENDERER_USE_WASM_SIMD AND EMSCRIPTEN)
+    target_compile_options(fontRenderer
+    PUBLIC
+        -msimd128
+    )
+
+    target_link_options(fontRenderer
+    PUBLIC
+        -msimd128
     )
 endif()
 
@@ -403,8 +430,8 @@ if (FONTRENDERER_LIBRARY_LEVEL STREQUAL "v3")
 
     target_compile_definitions(fontRenderer
     PUBLIC
-        FONTRENDERER_X86_64_V2
-        FONTRENDERER_X86_64_V3
+        FONTRENDERER_USE_X86_64_V2
+        FONTRENDERER_USE_X86_64_V3
     )
 elseif (FONTRENDERER_LIBRARY_LEVEL STREQUAL "v2")
     target_compile_options(fontRenderer
@@ -414,19 +441,19 @@ elseif (FONTRENDERER_LIBRARY_LEVEL STREQUAL "v2")
 
     target_compile_definitions(fontRenderer
     PUBLIC
-        FONTRENDERER_X86_64_V2
+        FONTRENDERER_USE_X86_64_V2
     )
 elseif (FONTRENDERER_X86_64_V2_FLAGS AND NOT FONTRENDERER_DISABLE_SIMD)
     target_compile_definitions(fontRenderer
     PUBLIC
-        FONTRENDERER_X86_64_V2_AT_RUNTIME
+        FONTRENDERER_USE_X86_64_V2_AT_RUNTIME
     )
 endif()
 
 if (FONTRENDERER_X86_64_V3_FLAGS AND NOT FONTRENDERER_LIBRARY_LEVEL STREQUAL "v3" AND NOT FONTRENDERER_DISABLE_SIMD)
     target_compile_definitions(fontRenderer
     PUBLIC
-        FONTRENDERER_X86_64_V3_AT_RUNTIME
+        FONTRENDERER_USE_X86_64_V3_AT_RUNTIME
     )
 endif()
 
@@ -593,6 +620,8 @@ if (FONTRENDERER_BUILD_BENCHMARKS AND FONTRENDERER_HAS_RASTERIZER)
         ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/NeonOverlap.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/NeonPacked.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/NeonPerCase.cpp
+        # The variants with WebAssembly SIMD. Each of these files compiles to nothing without -msimd128.
+        ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/variants/Wasm.cpp
     )
 
     # Only the file of the X64v2 variants is built for x86-64-v2, so that the other variants stay SSE2 code. The processor

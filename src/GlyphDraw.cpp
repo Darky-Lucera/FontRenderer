@@ -131,17 +131,17 @@ namespace {
         });
     }
 
-#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME)
     bool gAllowX64v2 = true;
 #endif
 
-#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_USE_X86_64_V3_AT_RUNTIME)
     bool gAllowX64v3 = true;
 #endif
 
 } // end of namespace
 
-#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME)
 //-------------------------------------
 void
 GlyphDraw::AllowX64v2(bool allow) {
@@ -149,7 +149,7 @@ GlyphDraw::AllowX64v2(bool allow) {
 }
 #endif
 
-#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_USE_X86_64_V3_AT_RUNTIME)
 //-------------------------------------
 void
 GlyphDraw::AllowX64v3(bool allow) {
@@ -170,17 +170,17 @@ GlyphDraw::GetScalarDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
 //-------------------------------------
 GlyphDraw::DrawGlyphFunction
 GlyphDraw::GetDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
-#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_USE_X86_64_V3_AT_RUNTIME)
     if (gAllowX64v3 && CpuX86::HasX64v3()) {
         return GetX64v3DrawGlyphFunction(bytesPerTexel, opaque);
     }
 #endif
 
-#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V3)
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_USE_X86_64_V3)
     return GetX64v3DrawGlyphFunction(bytesPerTexel, opaque);
-#elif defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2)
+#elif defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_USE_X86_64_V2)
     return GetX64v2DrawGlyphFunction(bytesPerTexel, opaque);
-#elif defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
+#elif defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME)
     if (gAllowX64v2 && CpuX86::HasX64v2()) {
         return GetX64v2DrawGlyphFunction(bytesPerTexel, opaque);
     }
@@ -190,6 +190,8 @@ GlyphDraw::GetDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque) {
     return GetSSE2DrawGlyphFunction(bytesPerTexel, opaque);
 #elif defined(FONTRENDERER_NEON)
     return GetNeonDrawGlyphFunction(bytesPerTexel, opaque);
+#elif defined(FONTRENDERER_WASM_SIMD)
+    return GetWasmDrawGlyphFunction(bytesPerTexel, opaque);
 #else
     return GetScalarDrawGlyphFunction(bytesPerTexel, opaque);
 #endif

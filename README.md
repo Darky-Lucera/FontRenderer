@@ -48,7 +48,7 @@ font.DrawText(text, fontSize, color32, bufferDest, bufferDestStride, posX, posY)
 
 ### How a pixel is blended
 
-The scalar, SSE2, x86-64-v2, x86-64-v3 and NEON code leave exactly the same pixels.
+The scalar, SSE2, x86-64-v2, x86-64-v3, NEON and WebAssembly SIMD code leave exactly the same pixels.
 Each channel is a value from 0 to 255, and each operation below works on every channel.
 
 - `tintColor` is the color of the text, not premultiplied.
@@ -193,6 +193,8 @@ Kerning that depends on more than two glyphs needs a text shaper like HarfBuzz, 
 
 Tested on Windows, Linux, Android (arm64 phones and the x86_64 emulator), the web (Emscripten) and DOS (DJGPP, in DOSBox-X). macOS and iOS use the same POSIX code, but they are not tested.
 
+On the web, the text is drawn with WebAssembly SIMD. The option `FONTRENDERER_USE_WASM_SIMD`, on by default, adds `-msimd128` to the library and to the programs that link it, because a browser without WebAssembly SIMD cannot load a module that has any SIMD instruction. Browsers have it since Chrome 91, Firefox 89 and Safari 16.4. To support older ones, build the program twice, with the option on and off, and pick one in JavaScript with `WebAssembly.validate` on a small module that has a SIMD instruction, as the `wasm-feature-detect` library does. In Chrome, Firefox and Edge on an i7-10850H, and in Chrome on two ARM phones, the glyphs drew between 31 and 380 % faster than with the scalar code, depending on the size of the text, the browser and the processor. With `-msse2` or `-mfpu=neon`, the library still draws with its WebAssembly code, which was faster than the SSE2 and NEON code translated by Emscripten.
+
 DOS support is minimal. DOS cannot map files, so the whole font is loaded into memory, and rasterizing TrueType glyphs is slow on computers of that time. On DOS, a [baked font](#baked-fonts) is a better choice: build only `FONTRENDERER_USE_BAKED`, and save the font on another computer. The example also needs long file names (`lfn = true` in DOSBox-X) to find its font file.
 
 ## How to use it
@@ -208,9 +210,10 @@ You have two options:
   |`FONTRENDERER_USE_LIBSCHRIFT`|`ON`|The libschrift backend, `FontSFT`|
   |`FONTRENDERER_USE_FREETYPE`|`OFF`|The FreeType backend, `FontFT`. CMake uses the FreeType installed in the system, and downloads it if there is none|
   |`FONTRENDERER_USE_BAKED`|`ON`|The backend that reads baked fonts, `FontBaked`|
-  |`FONTRENDERER_DISABLE_SIMD`|`OFF`|Only the scalar drawing code. By default the text is drawn with SSE2 where the compiler may use it, always on x86 of 64 bits, and with NEON on ARM64|
-  |`FONTRENDERER_X86_64_V2`|`ON`|Only for x86 of 64 bits. The whole library is built for x86-64-v2 (SSE3, SSSE3, SSE4.1, SSE4.2 and POPCNT), and it stops the program at start, with a message, on a processor without that level. `OFF` builds the library for the default x86-64 level, which includes SSE and SSE2, and draws the text with a copy for x86-64-v2 only when the processor has it. The gain is small: the glyphs draw about 6% faster. The comment of the option in `CMakeLists.txt` has the details|
-  |`FONTRENDERER_X86_64_V3`|`OFF`|Only for x86 of 64 bits. The library has a copy of the drawing for x86-64-v3 (AVX2). Against x86-64-v2, its glyphs draw between 4% slower and 12% faster at 14 pixels, between 11% and 50% faster at 40 pixels, and between 29% and 53% faster with BGRA32 textures. `OFF` uses that copy only when the processor has the level. `ON` builds the whole library for x86-64-v3, whatever `FONTRENDERER_X86_64_V2` says, and stops the program at start, with a message, on a processor without that level. The comment of the option in `CMakeLists.txt` has the details|
+  |`FONTRENDERER_DISABLE_SIMD`|`OFF`|Only the scalar drawing code. By default the text is drawn with SSE2 where the compiler may use it, always on x86 of 64 bits, with NEON on ARM64, and with WebAssembly SIMD on the web|
+  |`FONTRENDERER_USE_X86_64_V2`|`ON`|Only for x86 of 64 bits. The whole library is built for x86-64-v2 (SSE3, SSSE3, SSE4.1, SSE4.2 and POPCNT), and it stops the program at start, with a message, on a processor without that level. `OFF` builds the library for the default x86-64 level, which includes SSE and SSE2, and draws the text with a copy for x86-64-v2 only when the processor has it. The gain is small: the glyphs draw about 6% faster. The comment of the option in `CMakeLists.txt` has the details|
+  |`FONTRENDERER_USE_X86_64_V3`|`OFF`|Only for x86 of 64 bits. The library has a copy of the drawing for x86-64-v3 (AVX2). Against x86-64-v2, its glyphs draw between 4% slower and 12% faster at 14 pixels, between 11% and 50% faster at 40 pixels, and between 29% and 53% faster with BGRA32 textures. `OFF` uses that copy only when the processor has the level. `ON` builds the whole library for x86-64-v3, whatever `FONTRENDERER_USE_X86_64_V2` says, and stops the program at start, with a message, on a processor without that level. The comment of the option in `CMakeLists.txt` has the details|
+  |`FONTRENDERER_USE_WASM_SIMD`|`ON`|Only for Emscripten. It adds `-msimd128` to the library and to the programs that link it, so that the text is drawn with WebAssembly SIMD. A browser without WebAssembly SIMD cannot load the program. See [Platforms](#platforms)|
   |`FONTRENDERER_BUILD_EXAMPLES`|`ON` only when FontRenderer is the main project|The examples, which show every backend that is on. The [effects example](#the-effects-example) also needs `FONTRENDERER_USE_BAKED`. They download MiniFB, unless the project that adds FontRenderer already has a `minifb` target|
   |`FONTRENDERER_BUILD_TESTS`|`ON` only when FontRenderer is the main project|The unit tests|
   |`FONTRENDERER_BUILD_BENCHMARKS`|`OFF`|The benchmarks of the drawing code, `benchmarkDraw`, of the layout, `benchmarkLayout`, and of the rasterizers, `benchmarkRaster`. See [Benchmarks](#benchmarks)|
@@ -231,8 +234,9 @@ You have two options:
   - GlyphDraw.cpp
   - GlyphDrawNeon.cpp
   - GlyphDrawSSE2.cpp
-  - GlyphDrawX64v2.cpp (it builds nothing unless you define `FONTRENDERER_X86_64_V2` or `FONTRENDERER_X86_64_V2_AT_RUNTIME`, which `Platform.h` explains)
-  - GlyphDrawX64v3.cpp (it builds nothing unless you define `FONTRENDERER_X86_64_V3` or `FONTRENDERER_X86_64_V3_AT_RUNTIME`, which `Platform.h` explains, and must be built for x86-64-v3)
+  - GlyphDrawWasm.cpp (it builds nothing without `-msimd128`)
+  - GlyphDrawX64v2.cpp (it builds nothing unless you define `FONTRENDERER_USE_X86_64_V2` or `FONTRENDERER_USE_X86_64_V2_AT_RUNTIME`, which `Platform.h` explains)
+  - GlyphDrawX64v3.cpp (it builds nothing unless you define `FONTRENDERER_USE_X86_64_V3` or `FONTRENDERER_USE_X86_64_V3_AT_RUNTIME`, which `Platform.h` explains, and must be built for x86-64-v3)
   - MappedFile.h
   - MappedFile.cpp
   - Platform.h

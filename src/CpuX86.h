@@ -13,12 +13,12 @@
 namespace MindShake {
 namespace CpuX86 {
 
-#if defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
+#if defined(FONTRENDERER_USE_X86_64_V2) || defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME)
     // Whether this processor has x86-64-v2, from cpuid.
     bool    HasX64v2();
 #endif
 
-#if defined(FONTRENDERER_X86_64_V3) || defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+#if defined(FONTRENDERER_USE_X86_64_V3) || defined(FONTRENDERER_USE_X86_64_V3_AT_RUNTIME)
     // Whether this processor has x86-64-v3, which includes AVX2, and the operating system saves its registers.
     bool    HasX64v3();
 #endif

@@ -58,7 +58,7 @@ namespace Baseline {
         DrawQuads(scenario, dst, GlyphDraw::GetScalarDrawGlyphFunction(GetBytesPerTexel(scenario), (scenario.color >> 24) == 255));
     }
 
-#if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_X86_64_V2)
+#if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_USE_X86_64_V2)
     //---------------------------------
     void
     DrawSse2(Scenario &scenario, uint32_t *dst) {
@@ -66,7 +66,7 @@ namespace Baseline {
     }
 #endif
 
-#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_USE_X86_64_V2) || defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME))
     //---------------------------------
     void
     DrawX64v2(Scenario &scenario, uint32_t *dst) {

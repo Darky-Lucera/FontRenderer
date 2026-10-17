@@ -47,31 +47,35 @@ namespace GlyphDraw {
     // The same function of each implementation. All of them leave the same pixels, which the tests check.
     DrawGlyphFunction   GetScalarDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
 
-#if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_X86_64_V2)
+#if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_USE_X86_64_V2)
     DrawGlyphFunction   GetSSE2DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
 #endif
 
-#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_USE_X86_64_V2) || defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME))
     DrawGlyphFunction   GetX64v2DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
 #endif
 
-#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME)
     // GetDrawGlyphFunction returns the functions of x86-64-v2 when the processor has that level and they are allowed,
     // which they are unless this is called with false. The tests do it, to check the choice of the SSE2 functions on
     // any processor.
     void                AllowX64v2(bool allow);
 #endif
-#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V3) || defined(FONTRENDERER_X86_64_V3_AT_RUNTIME))
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_USE_X86_64_V3) || defined(FONTRENDERER_USE_X86_64_V3_AT_RUNTIME))
     // The functions built for x86-64-v3. Only a processor with that level can run them.
     DrawGlyphFunction   GetX64v3DrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
 #endif
-#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+#if defined(FONTRENDERER_SSE2) && defined(FONTRENDERER_USE_X86_64_V3_AT_RUNTIME)
     // As AllowX64v2, for the functions above.
     void                AllowX64v3(bool allow);
 #endif
 
 #if defined(FONTRENDERER_NEON)
     DrawGlyphFunction   GetNeonDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
+#endif
+
+#if defined(FONTRENDERER_WASM_SIMD)
+    DrawGlyphFunction   GetWasmDrawGlyphFunction(uint32_t bytesPerTexel, bool opaque);
 #endif
 
 } // end of namespace GlyphDraw

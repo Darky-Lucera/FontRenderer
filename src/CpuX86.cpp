@@ -7,7 +7,7 @@
 
 #include "CpuX86.h"
 
-#if defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME) || defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+#if defined(FONTRENDERER_USE_X86_64_V2) || defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME) || defined(FONTRENDERER_USE_X86_64_V3_AT_RUNTIME)
 
 #if defined(_MSC_VER)
     #include <intrin.h>
@@ -69,7 +69,7 @@ namespace {
         return (Cpuid(1).ecx & kLeaf1) == kLeaf1 && (Cpuid(0x80000001u).ecx & kLAHFSAHF) != 0;
     }
 
-#if defined(FONTRENDERER_X86_64_V3) || defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+#if defined(FONTRENDERER_USE_X86_64_V3) || defined(FONTRENDERER_USE_X86_64_V3_AT_RUNTIME)
     // XCR0, the register that says which registers the operating system saves when it switches threads.
     //---------------------------------
     uint64_t
@@ -112,7 +112,7 @@ namespace {
 
 } // end of namespace
 
-#if defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
+#if defined(FONTRENDERER_USE_X86_64_V2) || defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME)
 //-------------------------------------
 bool
 CpuX86::HasX64v2() {
@@ -121,7 +121,7 @@ CpuX86::HasX64v2() {
 }
 #endif
 
-#if defined(FONTRENDERER_X86_64_V3) || defined(FONTRENDERER_X86_64_V3_AT_RUNTIME)
+#if defined(FONTRENDERER_USE_X86_64_V3) || defined(FONTRENDERER_USE_X86_64_V3_AT_RUNTIME)
 //-------------------------------------
 bool
 CpuX86::HasX64v3() {

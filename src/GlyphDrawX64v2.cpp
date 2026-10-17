@@ -10,7 +10,7 @@
 // Without one of the macros that Platform.h explains, this file builds nothing.
 #include "Platform.h"
 
-#if defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME)
+#if defined(FONTRENDERER_USE_X86_64_V2) || defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME)
     #define FONTRENDERER_GLYPHDRAW_X64V2
     #include "GlyphDrawSSE2.cpp"
 #endif

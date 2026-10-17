@@ -22,7 +22,7 @@ using namespace MindShake;
 // C++14 needs these definitions whenever the constants are bound to a reference.
 constexpr uint32_t FontBase::kMaxTextureSize;
 
-#if defined(FONTRENDERER_X86_64_V2)
+#if defined(FONTRENDERER_USE_X86_64_V2)
 //-------------------------------------
 namespace {
 
@@ -32,14 +32,14 @@ namespace {
     // that are built before this one still run first.
     struct LevelCheck {
         LevelCheck() {
-#if defined(FONTRENDERER_X86_64_V3)
+#if defined(FONTRENDERER_USE_X86_64_V3)
             if (CpuX86::HasX64v3() == false) {
-                std::fputs("FontRenderer was built for x86-64-v3 (FONTRENDERER_X86_64_V3), which this processor does not have.\n", stderr);
+                std::fputs("FontRenderer was built for x86-64-v3 (FONTRENDERER_USE_X86_64_V3), which this processor does not have.\n", stderr);
                 std::abort();
             }
 #else
             if (CpuX86::HasX64v2() == false) {
-                std::fputs("FontRenderer was built for x86-64-v2 (FONTRENDERER_X86_64_V2), which this processor does not have.\n", stderr);
+                std::fputs("FontRenderer was built for x86-64-v2 (FONTRENDERER_USE_X86_64_V2), which this processor does not have.\n", stderr);
                 std::abort();
             }
 #endif

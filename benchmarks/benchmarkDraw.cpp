@@ -96,10 +96,10 @@ namespace {
         { "Reference",                  DrawReference                     },
         { "Baseline",                   Baseline::Draw                    },
         { "BaselineScalar",             Baseline::DrawScalar              },
-#if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_X86_64_V2)
+#if defined(FONTRENDERER_SSE2) && !defined(FONTRENDERER_USE_X86_64_V2)
         { "BaselineSse2",               Baseline::DrawSse2                },
 #endif
-#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V2) || defined(FONTRENDERER_X86_64_V2_AT_RUNTIME))
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_USE_X86_64_V2) || defined(FONTRENDERER_USE_X86_64_V2_AT_RUNTIME))
         // Only on a processor with x86-64-v2.
         { "BaselineX64v2",              Baseline::DrawX64v2               },
 #endif
@@ -213,6 +213,13 @@ namespace {
         // { "NeonOverlapBands",           NeonOverlap::DrawBands            },
         // { "NeonOverlapBandsBranchless", NeonOverlap::DrawBandsBranchless  },
         // { "NeonOverlapBandsSkip32",     NeonOverlap::DrawBandsSkip32      },
+#endif
+#if defined(__wasm_simd128__)
+        // The SSE2 code of the library written for WebAssembly SIMD. WasmMulhi and WasmBitmask each go back to how
+        // Emscripten translates one of the SSE2 intrinsics.
+        { "Wasm",                       Wasm::Draw                        },
+        { "WasmMulhi",                  Wasm::DrawMulhi                   },
+        { "WasmBitmask",                Wasm::DrawBitmask                 },
 #endif
         // The scalar variants that leave the same pixels as DrawText. Off to measure the SSE2 ones in less time.
         // { "MoreJumpsPerGlyph",          MoreJumpsPerGlyph::Draw           },

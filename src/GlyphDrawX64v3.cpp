@@ -10,7 +10,7 @@
 // Without one of the macros of x86-64-v3 that Platform.h explains, this file builds nothing.
 #include "Platform.h"
 
-#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_X86_64_V3) || defined(FONTRENDERER_X86_64_V3_AT_RUNTIME))
+#if defined(FONTRENDERER_SSE2) && (defined(FONTRENDERER_USE_X86_64_V3) || defined(FONTRENDERER_USE_X86_64_V3_AT_RUNTIME))
     #define FONTRENDERER_GLYPHDRAW_X64V2
     #define FONTRENDERER_GLYPHDRAW_X64V3
     #include "GlyphDrawSSE2.cpp"
