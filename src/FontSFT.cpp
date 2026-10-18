@@ -5,6 +5,8 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
+#if defined(FONTRENDERER_USE_LIBSCHRIFT)
+
 #include "FontSFT.h"
 //-------------------------------------
 #include <cmath>
@@ -149,3 +151,5 @@ FontSFT::GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
     SFT_Kerning kerning {};
     return (sft_kerning(&sft, leftGlyph, rightGlyph, &kerning) < 0) ? 0 : int32_t(kerning.xShift);
 }
+
+#endif

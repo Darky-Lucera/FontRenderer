@@ -1,3 +1,7 @@
+#include "Platform.h"
+
+#if defined(FONTRENDERER_HAS_RASTERIZER)
+
 #include "SkylineBinPack.h"
 //-------------------------------------
 #include <algorithm>
@@ -310,3 +314,5 @@ namespace MindShake {
     }
 
 } // end of namespace
+
+#endif

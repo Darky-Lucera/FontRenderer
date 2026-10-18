@@ -5,6 +5,8 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
+#if defined(FONTRENDERER_USE_BAKED)
+
 #include "FontBaked.h"
 #include "Tga.h"
 //-------------------------------------
@@ -115,3 +117,5 @@ FontBaked::GetDataForHeight(uint8_t height) {
     const HeightData *data = mHeightData.Find(height);
     return (mStatus == EStatus::Ok && data != nullptr) ? *data : HeightData {};
 }
+
+#endif

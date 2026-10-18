@@ -73,6 +73,11 @@
     #undef FONTRENDERER_USE_X86_64_V3_AT_RUNTIME
 #endif
 
+// Without a backend that renders glyphs, Font and the files that only it uses build nothing.
+#if defined(FONTRENDERER_USE_STB) || defined(FONTRENDERER_USE_LIBSCHRIFT) || defined(FONTRENDERER_USE_FREETYPE)
+    #define FONTRENDERER_HAS_RASTERIZER
+#endif
+
 #if defined(_MSC_VER)
     #define FONTRENDERER_NO_INLINE      __declspec(noinline)
     #define FONTRENDERER_ALWAYS_INLINE  __forceinline

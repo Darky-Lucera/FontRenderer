@@ -5,6 +5,10 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
+#include "Platform.h"
+
+#if defined(FONTRENDERER_HAS_RASTERIZER)
+
 #include "GposKerning.h"
 //-------------------------------------
 #include <algorithm>
@@ -366,3 +370,5 @@ GposKerning::GetKerning(uint32_t leftGlyph, uint32_t rightGlyph) const {
 
     return 0;
 }
+
+#endif

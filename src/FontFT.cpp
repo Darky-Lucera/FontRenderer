@@ -5,6 +5,8 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
+#if defined(FONTRENDERER_USE_FREETYPE)
+
 #include "FontFT.h"
 //-------------------------------------
 #include <ft2build.h>
@@ -248,3 +250,5 @@ FontFT::GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
     }
     return int32_t(kerning.x);
 }
+
+#endif

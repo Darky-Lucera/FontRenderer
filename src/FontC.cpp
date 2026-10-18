@@ -25,11 +25,6 @@
 #include <new>
 #include <vector>
 
-// Font.cpp is only built with a backend that renders glyphs.
-#if defined(FONTRENDERER_USE_STB) || defined(FONTRENDERER_USE_LIBSCHRIFT) || defined(FONTRENDERER_USE_FREETYPE)
-#define FONTRENDERER_HAS_RASTERIZER
-#endif
-
 // The C API repeats these values so that C can use them as constants. The build fails if they drift apart.
 //-------------------------------------
 static_assert(FR_FONT_MAX_TEXTURE_SIZE     == MindShake::Font::kMaxTextureSize,     "FR_FONT_MAX_TEXTURE_SIZE must match Font::kMaxTextureSize");

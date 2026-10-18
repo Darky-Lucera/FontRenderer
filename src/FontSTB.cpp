@@ -5,6 +5,8 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
+#if defined(FONTRENDERER_USE_STB)
+
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "FontSTB.h"
@@ -104,3 +106,5 @@ FontSTB::GetKernTableKerning(uint32_t leftGlyph, uint32_t rightGlyph) {
     // The public stbtt_GetGlyphKernAdvance ignores 'kern' when the font has GPOS.
     return stbtt__GetGlyphKernInfoAdvance(&mInfo, int32_t(leftGlyph), int32_t(rightGlyph));
 }
+
+#endif

@@ -5,6 +5,10 @@
 // See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt
 //-----------------------------------------------------------------------------
 
+#include "Platform.h"
+
+#if defined(FONTRENDERER_HAS_RASTERIZER)
+
 #include "Font.h"
 #include "Tga.h"
 #include "UTF8_Utils.h"
@@ -688,3 +692,5 @@ Font::SaveBaked(const char *metricsFile, const char *textureFile) const {
 
     return SaveMetrics(metricsFile, width, height);
 }
+
+#endif

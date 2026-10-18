@@ -49,78 +49,15 @@ You have two options to add FontRenderer to your project:
 
   If `FONTRENDERER_USE_BAKED` is the only backend that is on, the library can draw baked fonts, but it cannot render glyphs from a font file, so it does not build `Font`. In that case CMake does not build the examples either, because they render glyphs from a font file, and the unit tests skip the tests that need one.
 
-- Select the library you want to use into your project (stb_truetype, libschrift, FreeType) and drop the following files in your project.
-  Define the macro of each backend you choose, `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` or `FONTRENDERER_USE_BAKED`, for every file you compile: the header of the backend and the C API need it.
+- Add the files to your project. Build every `.cpp` file of `src`, and also `src/external/libschrift/schrift.c` if you use libschrift: it is a modified copy, see [Dependencies](#dependencies). Add `src` and `src/external` to the include paths. With FreeType, also build and link FreeType on your own.
+  Define the macro of each backend you want, `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` or `FONTRENDERER_USE_BAKED`, for every file you compile. The file of a backend whose macro is not defined builds nothing. Without the macro of a backend that renders glyphs, `Font.cpp`, `GposKerning.cpp` and `SkylineBinPack.cpp` build nothing either.
+  Some files of the SIMD code also build nothing unless you ask for them:
 
-  - CpuX86.h
-  - CpuX86.cpp
-  - FlatMap.h
-  - FontBase.h
-  - FontBase.cpp
-  - GlyphDraw.h
-  - GlyphDraw.cpp
-  - GlyphDrawNeon.cpp
-  - GlyphDrawSSE2.cpp
-  - GlyphDrawWasm.cpp (it builds nothing without `-msimd128`)
-  - GlyphDrawX64v2.cpp (it builds nothing unless you define `FONTRENDERER_USE_X86_64_V2` or `FONTRENDERER_USE_X86_64_V2_AT_RUNTIME`, which `Platform.h` explains)
-  - GlyphDrawX64v3.cpp (it builds nothing unless you define `FONTRENDERER_USE_X86_64_V3` or `FONTRENDERER_USE_X86_64_V3_AT_RUNTIME`, which `Platform.h` explains, and must be built for x86-64-v3)
-  - MappedFile.h
-  - MappedFile.cpp
-  - Platform.h
-  - SkylineBinPack.h
-  - StableMap.h
-  - Tga.h
-  - Tga.cpp
-  - UTF8_Utils.h
+  - `GlyphDrawWasm.cpp` builds nothing without `-msimd128`.
+  - `GlyphDrawX64v2.cpp` builds nothing unless you define `FONTRENDERER_USE_X86_64_V2` or `FONTRENDERER_USE_X86_64_V2_AT_RUNTIME`.
+  - `GlyphDrawX64v3.cpp` builds nothing unless you define `FONTRENDERER_USE_X86_64_V3` or `FONTRENDERER_USE_X86_64_V3_AT_RUNTIME`.
 
-  ---
-
-  **If you choose libschrift, stb_truetype or FreeType**, which render glyphs, also:
-
-  - Font.h
-  - Font.cpp
-  - GposKerning.h
-  - GposKerning.cpp
-  - SkylineBinPack.cpp
-
-  ---
-
-  **If you choose to use libschrift**:
-
-  - FontSFT.h
-  - FontSFT.cpp
-  - schrift.h (the modified copy, see [Dependencies](#dependencies))
-  - schrift.c (the modified copy, see [Dependencies](#dependencies))
-
-  ---
-
-  **If you choose to use stb_truetype**:
-
-  - FontSTB.h
-  - FontSTB.cpp
-  - stb_truetype.h
-
-  ---
-
-  **If you choose to use FreeType**:
-
-  - FontFT.h
-  - FontFT.cpp
-  - FreeType itself, which you build and link on your own
-
-  ---
-
-  **If you choose to use baked fonts**:
-
-  - FontBaked.h
-  - FontBaked.cpp
-
-  ---
-
-  **If you also want the C API**:
-
-  - FontC.h
-  - FontC.cpp, which only creates fonts with the backends whose macro is defined
+  With a macro that ends in `_AT_RUNTIME`, build only its file for that level: `-march=x86-64-v2` or `/arch:SSE4.2`, and `-march=x86-64-v3` or `/arch:AVX2`. `Platform.h` explains these macros.
 
 ## API
 
