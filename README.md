@@ -1,10 +1,126 @@
 # FontRenderer
 
-FontRenderer is a simple tool for rendering text from a ttf font into a buffer (with clipping).
+FontRenderer draws text from a TrueType or OpenType font into a 32-bit pixel buffer, with clipping. It can also give where each glyph goes, to draw the text with the GPU.
 
-It can also save the glyphs it renders and draw text with them later, without the font file and without a rasterizer (see [Baked fonts](#baked-fonts)), and it gives where each glyph goes, to draw the text with the GPU (see [Drawing with the GPU](#drawing-with-the-gpu)).
+![FontRenderer example](screenshots/captureAA.png)
 
-As an example I have used the Mini Frame Buffer (MiniFB) library to create a window and render some text inside.
+- Three backends render the glyphs from a font file: stb_truetype, libschrift and FreeType. A fourth one, `FontBaked`, draws with glyphs saved before, without the font file and without a rasterizer. See [Baked fonts](#baked-fonts).
+- Baked fonts can have effects, like a shadow, an outline or a gradient, added to their texture with an image program. See [Adding effects to the texture](#adding-effects-to-the-texture).
+- Kerning from the `GPOS` table of OpenType, or from the `kern` table. See [Kerning](#kerning).
+- An optional 3 × 3 antialias filter, with weights you choose.
+- The position of each glyph and its area in the texture, to draw the text with the GPU. See [Drawing with the GPU](#drawing-with-the-gpu).
+- The text is drawn with SSE2, x86-64-v2, x86-64-v3 (AVX2), NEON or WebAssembly SIMD, with exactly the same pixels as the scalar code. See [Benchmarks](#benchmarks).
+- A C++ API and a C API.
+- Windows, Linux, macOS, Android, the web and DOS. See [Platforms](#platforms).
+
+## How to use it
+
+FontRenderer needs a C++14 compiler and a C11 compiler, and CMake 3.16 or newer if you build it with CMake.
+
+To build the examples and the unit tests and run them:
+
+```text
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+```
+
+The programs are saved in `bin`, like `exampleRender` and the unit tests, `unitTests`. The examples read their fonts from `bin/resources`, so run them from `bin`.
+
+You have two options to add FontRenderer to your project:
+
+- Use CMake. Add FontRenderer with `add_subdirectory()` or `FetchContent`, and link against the `FontRenderer::FontRenderer` target.
+  These options choose what is built:
+
+  |Option|Default|What it builds|
+  |---|---|---|
+  |`FONTRENDERER_USE_STB`|`ON`|The stb_truetype backend, `FontSTB`|
+  |`FONTRENDERER_USE_LIBSCHRIFT`|`ON`|The libschrift backend, `FontSFT`|
+  |`FONTRENDERER_USE_FREETYPE`|`OFF`|The FreeType backend, `FontFT`. CMake uses the FreeType installed in the system, and downloads it if there is none|
+  |`FONTRENDERER_USE_BAKED`|`ON`|The backend that reads baked fonts, `FontBaked`|
+  |`FONTRENDERER_DISABLE_SIMD`|`OFF`|Only the scalar drawing code. By default the text is drawn with SSE2 where the compiler may use it, always on x86 of 64 bits, with NEON on ARM64, and with WebAssembly SIMD on the web|
+  |`FONTRENDERER_USE_X86_64_V2`|`ON`|Only for x86 of 64 bits. The whole library is built for x86-64-v2 (SSE3, SSSE3, SSE4.1, SSE4.2 and POPCNT), and it stops the program at start, with a message, on a processor without that level. `OFF` builds the library for the default x86-64 level, which includes SSE and SSE2, and draws the text with a copy for x86-64-v2 only when the processor has it. The gain is small: the glyphs draw about 6 % faster. The comment of the option in `CMakeLists.txt` has the details|
+  |`FONTRENDERER_USE_X86_64_V3`|`OFF`|Only for x86 of 64 bits. The library has a copy of the drawing for x86-64-v3 (AVX2). At 14 pixels it draws as fast as x86-64-v2, and the bigger the glyphs, the faster it is: see [Benchmarks](#benchmarks). `OFF` uses that copy only when the processor has the level. `ON` builds the whole library for x86-64-v3, whatever `FONTRENDERER_USE_X86_64_V2` says, and stops the program at start, with a message, on a processor without that level. The comment of the option in `CMakeLists.txt` has the details|
+  |`FONTRENDERER_USE_WASM_SIMD`|`ON`|Only for Emscripten. It adds `-msimd128` to the library and to the programs that link it, so that the text is drawn with WebAssembly SIMD. A browser without WebAssembly SIMD cannot load the program. See [Platforms](#platforms)|
+  |`FONTRENDERER_BUILD_EXAMPLES`|`ON` only when FontRenderer is the main project|The examples, which show every backend that is on. The [effects example](#the-effects-example) also needs `FONTRENDERER_USE_BAKED`. They download MiniFB, unless the project that adds FontRenderer already has a `minifb` target|
+  |`FONTRENDERER_BUILD_TESTS`|`ON` only when FontRenderer is the main project|The unit tests|
+  |`FONTRENDERER_BUILD_BENCHMARKS`|`OFF`|The benchmarks of the drawing code, `benchmarkDraw`, of the layout, `benchmarkLayout`, and of the rasterizers, `benchmarkRaster`. See [benchmarks/README.md](benchmarks/README.md)|
+
+  At least one backend must be on. The library defines `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` and `FONTRENDERER_USE_BAKED` for each backend that is on, also for the code that uses the library. The header of each backend, like `FontSTB.h`, stops the build if its macro is not defined.
+
+  If `FONTRENDERER_USE_BAKED` is the only backend that is on, the library can draw baked fonts, but it cannot render glyphs from a font file, so it does not build `Font`. In that case CMake does not build the examples either, because they render glyphs from a font file, and the unit tests skip the tests that need one.
+
+- Select the library you want to use into your project (stb_truetype, libschrift, FreeType) and drop the following files in your project.
+  Define the macro of each backend you choose, `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` or `FONTRENDERER_USE_BAKED`, for every file you compile: the header of the backend and the C API need it.
+
+  - CpuX86.h
+  - CpuX86.cpp
+  - FlatMap.h
+  - FontBase.h
+  - FontBase.cpp
+  - GlyphDraw.h
+  - GlyphDraw.cpp
+  - GlyphDrawNeon.cpp
+  - GlyphDrawSSE2.cpp
+  - GlyphDrawWasm.cpp (it builds nothing without `-msimd128`)
+  - GlyphDrawX64v2.cpp (it builds nothing unless you define `FONTRENDERER_USE_X86_64_V2` or `FONTRENDERER_USE_X86_64_V2_AT_RUNTIME`, which `Platform.h` explains)
+  - GlyphDrawX64v3.cpp (it builds nothing unless you define `FONTRENDERER_USE_X86_64_V3` or `FONTRENDERER_USE_X86_64_V3_AT_RUNTIME`, which `Platform.h` explains, and must be built for x86-64-v3)
+  - MappedFile.h
+  - MappedFile.cpp
+  - Platform.h
+  - SkylineBinPack.h
+  - StableMap.h
+  - Tga.h
+  - Tga.cpp
+  - UTF8_Utils.h
+
+  ---
+
+  **If you choose libschrift, stb_truetype or FreeType**, which render glyphs, also:
+
+  - Font.h
+  - Font.cpp
+  - GposKerning.h
+  - GposKerning.cpp
+  - SkylineBinPack.cpp
+
+  ---
+
+  **If you choose to use libschrift**:
+
+  - FontSFT.h
+  - FontSFT.cpp
+  - schrift.h (the modified copy, see [Dependencies](#dependencies))
+  - schrift.c (the modified copy, see [Dependencies](#dependencies))
+
+  ---
+
+  **If you choose to use stb_truetype**:
+
+  - FontSTB.h
+  - FontSTB.cpp
+  - stb_truetype.h
+
+  ---
+
+  **If you choose to use FreeType**:
+
+  - FontFT.h
+  - FontFT.cpp
+  - FreeType itself, which you build and link on your own
+
+  ---
+
+  **If you choose to use baked fonts**:
+
+  - FontBaked.h
+  - FontBaked.cpp
+
+  ---
+
+  **If you also want the C API**:
+
+  - FontC.h
+  - FontC.cpp, which only creates fonts with the backends whose macro is defined
 
 ## API
 
@@ -17,14 +133,17 @@ uint32_t   color32 = 0xffff0000;   // ARGB. With alpha 0 the text is invisible
 
 // Load a font
 MindShake::FontSTB font("resources/Roboto-Regular.ttf");
+if (font.GetStatus() != MindShake::FontBase::EStatus::Ok) {
+    // The file is missing or it is not a valid font
+}
 
-// Set the clipping (optional, but without it the user has the responsibility to fit the text inside the buffer)
+// Set the clipping (optional, but without it the text must fit inside the buffer)
 font.SetClipping(left, top, right, bottom);
 
 // Enable antialias
 font.SetAntialias(true);
 font.SetAntialiasWeights(20, 4, 1); // Gaussian
-font.SetAntialiasWeights(1, 1, 1);  // Mean
+//font.SetAntialiasWeights(1, 1, 1);  // Mean, instead of Gaussian
 
 // Allow antialias to extend one border pixel per glyph
 font.SetAntialiasAllowEx(true);
@@ -40,41 +159,53 @@ font.GetTextBox(text, fontSize, &rect);
 font.DrawText(text, fontSize, color32, bufferDest, bufferDestStride, posX, posY);
 ```
 
-**Note**: Each glyph is rendered only once per fontSize, so changing any antialias setting, the glyph spacing or the glyph padding discards the glyphs already rendered.
+`bufferDest` is an array of `uint32_t` pixels, one row after another, and `bufferDestStride` is the distance between two rows, in pixels, not in bytes. Each pixel is `0xAARRGGBB`, like `color32`, so in memory, on a little-endian processor, its bytes are blue, green, red and alpha. This is the order of the 32-bit window buffers of Windows, macOS and Linux. `posX` and `posY` are the top-left corner of the text.
 
-**Note**: By default the packer can rotate a glyph to fit more glyphs in the texture. With the SSE2 and NEON code, a rotated glyph usually draws more slowly: between 6 and 30 % slower in our benchmarks, on x86 with GCC and MSVC, an Apple M1, a Cortex-A78 and a Cortex-A55. There are exceptions: on x86, glyphs of 96 pixels drew faster rotated, and so did glyphs of 24 and 40 pixels on the Cortex-A55. The scalar code draws both at the same speed. With the x86-64-v3 code, rotated and upright glyphs have not been compared. If drawing speed matters more than texture space, call `SetAllowRotation(false)` before rendering the glyphs.
+`GetStatus` says whether the font loaded: `EStatus::Ok`, or the reason it failed, like `CannotOpenFile` or `InvalidFont`.
 
-**Note**: `DrawText` also blends the alpha of the buffer, as the *over* operator of Porter and Duff does. An opaque buffer stays opaque. On a transparent buffer, the result has premultiplied alpha: blue, green and red are multiplied by the alpha. A buffer that already has translucent pixels must have premultiplied alpha too. The color of the text is not premultiplied.
+**Note**: Each glyph is rendered only once per fontSize, so changing any antialias setting, the glyph spacing or the [glyph padding](#adding-effects-to-the-texture) discards the glyphs already rendered.
 
-### How a pixel is blended
+**Note**: By default the packer can rotate a glyph to fit more glyphs in the texture. With SIMD, a rotated glyph usually draws between 6 and 30 % more slowly (see [Benchmarks](#benchmarks)). If drawing speed matters more than texture space, call `SetAllowRotation(false)` before rendering the glyphs.
 
-The scalar, SSE2, x86-64-v2, x86-64-v3, NEON and WebAssembly SIMD code leave exactly the same pixels.
-Each channel is a value from 0 to 255, and each operation below works on every channel.
+**Note**: `DrawText` also blends the alpha of the buffer, as the *over* operator of Porter and Duff does. An opaque buffer stays opaque. On a transparent buffer, the result has premultiplied alpha: blue, green and red are multiplied by the alpha. A buffer that already has translucent pixels must have premultiplied alpha too. The color of the text is not premultiplied. See [How a pixel is blended](#how-a-pixel-is-blended).
 
-- `tintColor` is the color of the text, not premultiplied.
-- `fontTexture` is the font texel, premultiplied.
-  - A texel of an `Alpha8` texture is a coverage: `(coverage, coverage, coverage, coverage)`.
-  - A texel of a `BGRA32Premultiplied` texture is: `(round(r * coverage / 255), round(g * coverage / 255), round(b * coverage / 255), coverage)`.
-- `dest` is the pixel of the buffer. In an opaque buffer, as a screen buffer usually is, premultiplied alpha changes nothing. A buffer with translucent pixels must have premultiplied alpha, and it keeps it.
+**Note**: Some limits:
 
-```text
-premultipliedTint.rgb = round(tintColor.rgb * tintColor.a / 255)
-premultipliedTint.a   = tintColor.a
-
-source      = fontTexture * premultipliedTint
-sourceAlpha = round(source.a / 255)
-
-dest = round((source + dest * (255 - sourceAlpha)) / 255)
-```
-
-This is the *over* operator with premultiplied alpha.
-`source` is not divided by 255 before it is added to `dest`, so each channel is rounded only once. The division rounds exactly to the nearest integer for every value the blend can produce: `round(sum / 255) = (sum + 128 + ((sum + 128) >> 8)) >> 8`.
+- `fontSize` is a `uint8_t`, so the text is at most 255 pixels high.
+- A `'\n'` in the text starts a new line.
+- FontRenderer has no text shaper: it draws each character with its own glyph, from left to right. Scripts that need shaping, like Arabic or Devanagari, do not look right, and right-to-left text is not reordered.
+- A font is not thread safe: use each one from a single thread at a time.
 
 ### Classes
 
 - `FontBase` lays out and draws text with the glyphs a font already has. `DrawText`, `GetTextBox` and `GetGlyphQuads` are here.
 - `Font` renders its glyphs from a font file the first time they are drawn. `FontSTB`, `FontSFT` and `FontFT` are its backends.
 - `FontBaked` only reads the glyphs that a `Font` saved before. See [Baked fonts](#baked-fonts).
+
+### Other settings of Font
+
+- `SetSizeMode` chooses what `fontSize` measures. With `ESizeMode::LineHeight`, the default, it is the height from the highest ascender to the lowest descender. With `ESizeMode::EmSize` it is the typographic size, as `font-size` in CSS, so the height of a line depends on the font. Changing it discards the glyphs already rendered.
+- `SetTextureGrowth` chooses which sides of the texture double when a glyph does not fit: `ETextureGrowth::Height` (the default), `Width` or `Both`. Growing the width copies the whole texture, because the rows change length. The texture does not grow past `kMaxTextureSize` (16384) texels on a side, and a glyph that does not fit then stays empty until `Reset`.
+- `SetPackingHeuristic` chooses how the packer, a skyline packer by Jukka Jylänki, places the glyphs: `LevelBottomLeft` (the default) or `LevelMinWasteFit`. It only changes the glyphs packed afterwards.
+
+### C API
+
+`FontC.h` has the same functions for C, with names like `fr_font_draw_text`. Each function that can fail returns an `fr_status`. [exampleRenderC.c](examples/exampleRenderC.c) uses it.
+
+```c
+fr_font *font = NULL;
+if (fr_font_create("resources/Roboto-Regular.ttf", FR_FONT_BACKEND_STB, &font) != FR_STATUS_OK) {
+    // The file is missing, it is not a valid font, or the library was built without that backend
+}
+
+fr_font_set_clipping(font, left, top, right, bottom);
+fr_font_set_antialias(font, true);
+fr_font_draw_text(font, "Hello World!", 32, 0xffff0000, buffer_dest, buffer_dest_stride, pos_x, pos_y);
+
+fr_font_destroy(font);
+```
+
+`fr_font_create_baked` creates a [baked font](#baked-fonts).
 
 ## Baked fonts
 
@@ -163,7 +294,39 @@ The packer can rotate a glyph to fit it better, unless you call `SetAllowRotatio
 
 With `Font`, drawing or measuring text can render new glyphs and change the texture. `GetTextureVersion` changes every time the texels change, so compare it with the version you uploaded to know when to upload the texture again.
 
-## Font Renderer external dependencies
+## How a pixel is blended
+
+The scalar, SSE2, x86-64-v2, x86-64-v3, NEON and WebAssembly SIMD code leave exactly the same pixels.
+Each channel is a value from 0 to 255, and each operation below works on every channel.
+
+- `tintColor` is the color of the text, not premultiplied.
+- `fontTexture` is the font texel, premultiplied.
+  - A texel of an `Alpha8` texture is a coverage: `(coverage, coverage, coverage, coverage)`.
+  - A texel of a `BGRA32Premultiplied` texture is: `(round(r * coverage / 255), round(g * coverage / 255), round(b * coverage / 255), coverage)`.
+- `dest` is the pixel of the buffer. In an opaque buffer, as a screen buffer usually is, premultiplied alpha changes nothing. A buffer with translucent pixels must have premultiplied alpha, and it keeps it.
+
+```text
+premultipliedTint.rgb = round(tintColor.rgb * tintColor.a / 255)
+premultipliedTint.a   = tintColor.a
+
+source      = fontTexture * premultipliedTint
+sourceAlpha = round(source.a / 255)
+
+dest = round((source + dest * (255 - sourceAlpha)) / 255)
+```
+
+This is the *over* operator with premultiplied alpha.
+`source` is not divided by 255 before it is added to `dest`, so each channel is rounded only once. The division rounds exactly to the nearest integer for every value the blend can produce: `round(sum / 255) = (sum + 128 + ((sum + 128) >> 8)) >> 8`.
+
+## Platforms
+
+Tested on Windows, Linux, macOS (Intel and Apple M1), Android (arm64 phones and the x86_64 emulator), the web (Emscripten) and DOS (DJGPP, in DOSBox-X). iOS uses the same POSIX code as macOS, but it is not tested.
+
+On the web, the text is drawn with WebAssembly SIMD. The option `FONTRENDERER_USE_WASM_SIMD`, on by default, adds `-msimd128` to the library and to the programs that link it, because a browser without WebAssembly SIMD cannot load a module that has any SIMD instruction. Browsers have it since Chrome 91, Firefox 89 and Safari 16.4. To support older ones, build the program twice, with the option on and off, and pick one in JavaScript with `WebAssembly.validate` on a small module that has a SIMD instruction, as the `wasm-feature-detect` library does. How much faster it draws than the scalar code is in [Benchmarks](#benchmarks). With `-msse2` or `-mfpu=neon`, the library still draws with its WebAssembly code, which was faster than the SSE2 and NEON code translated by Emscripten.
+
+DOS support is minimal. DOS cannot map files, so the whole font is loaded into memory, and rasterizing TrueType glyphs is slow on computers of that time. On DOS, a [baked font](#baked-fonts) is a better choice: build only `FONTRENDERER_USE_BAKED`, and save the font on another computer. The example also needs long file names (`lfn = true` in DOSBox-X) to find its font file.
+
+## Dependencies
 
 For getting the font glyphs the following libraries are used:
 
@@ -189,155 +352,33 @@ FontRenderer does not know the script of the text, and a font can kern the same 
 
 Kerning that depends on more than two glyphs needs a text shaper like HarfBuzz, so FontRenderer does not apply it.
 
-## Platforms
-
-Tested on Windows, Linux, Android (arm64 phones and the x86_64 emulator), the web (Emscripten) and DOS (DJGPP, in DOSBox-X). macOS and iOS use the same POSIX code, but they are not tested.
-
-On the web, the text is drawn with WebAssembly SIMD. The option `FONTRENDERER_USE_WASM_SIMD`, on by default, adds `-msimd128` to the library and to the programs that link it, because a browser without WebAssembly SIMD cannot load a module that has any SIMD instruction. Browsers have it since Chrome 91, Firefox 89 and Safari 16.4. To support older ones, build the program twice, with the option on and off, and pick one in JavaScript with `WebAssembly.validate` on a small module that has a SIMD instruction, as the `wasm-feature-detect` library does. In Chrome, Firefox and Edge on an i7-10850H, and in Chrome on two ARM phones, the glyphs drew between 31 and 380 % faster than with the scalar code, depending on the size of the text, the browser and the processor. With `-msse2` or `-mfpu=neon`, the library still draws with its WebAssembly code, which was faster than the SSE2 and NEON code translated by Emscripten.
-
-DOS support is minimal. DOS cannot map files, so the whole font is loaded into memory, and rasterizing TrueType glyphs is slow on computers of that time. On DOS, a [baked font](#baked-fonts) is a better choice: build only `FONTRENDERER_USE_BAKED`, and save the font on another computer. The example also needs long file names (`lfn = true` in DOSBox-X) to find its font file.
-
-## How to use it
-
-You have two options:
-
-- Use CMake. Add FontRenderer with `add_subdirectory()` or `FetchContent`, and link against the `FontRenderer::FontRenderer` target.
-  These options choose what is built:
-
-  |Option|Default|What it builds|
-  |---|---|---|
-  |`FONTRENDERER_USE_STB`|`ON`|The stb_truetype backend, `FontSTB`|
-  |`FONTRENDERER_USE_LIBSCHRIFT`|`ON`|The libschrift backend, `FontSFT`|
-  |`FONTRENDERER_USE_FREETYPE`|`OFF`|The FreeType backend, `FontFT`. CMake uses the FreeType installed in the system, and downloads it if there is none|
-  |`FONTRENDERER_USE_BAKED`|`ON`|The backend that reads baked fonts, `FontBaked`|
-  |`FONTRENDERER_DISABLE_SIMD`|`OFF`|Only the scalar drawing code. By default the text is drawn with SSE2 where the compiler may use it, always on x86 of 64 bits, with NEON on ARM64, and with WebAssembly SIMD on the web|
-  |`FONTRENDERER_USE_X86_64_V2`|`ON`|Only for x86 of 64 bits. The whole library is built for x86-64-v2 (SSE3, SSSE3, SSE4.1, SSE4.2 and POPCNT), and it stops the program at start, with a message, on a processor without that level. `OFF` builds the library for the default x86-64 level, which includes SSE and SSE2, and draws the text with a copy for x86-64-v2 only when the processor has it. The gain is small: the glyphs draw about 6% faster. The comment of the option in `CMakeLists.txt` has the details|
-  |`FONTRENDERER_USE_X86_64_V3`|`OFF`|Only for x86 of 64 bits. The library has a copy of the drawing for x86-64-v3 (AVX2). Against x86-64-v2, its glyphs draw between 4% slower and 12% faster at 14 pixels, between 11% and 50% faster at 40 pixels, and between 29% and 53% faster with BGRA32 textures. `OFF` uses that copy only when the processor has the level. `ON` builds the whole library for x86-64-v3, whatever `FONTRENDERER_USE_X86_64_V2` says, and stops the program at start, with a message, on a processor without that level. The comment of the option in `CMakeLists.txt` has the details|
-  |`FONTRENDERER_USE_WASM_SIMD`|`ON`|Only for Emscripten. It adds `-msimd128` to the library and to the programs that link it, so that the text is drawn with WebAssembly SIMD. A browser without WebAssembly SIMD cannot load the program. See [Platforms](#platforms)|
-  |`FONTRENDERER_BUILD_EXAMPLES`|`ON` only when FontRenderer is the main project|The examples, which show every backend that is on. The [effects example](#the-effects-example) also needs `FONTRENDERER_USE_BAKED`. They download MiniFB, unless the project that adds FontRenderer already has a `minifb` target|
-  |`FONTRENDERER_BUILD_TESTS`|`ON` only when FontRenderer is the main project|The unit tests|
-  |`FONTRENDERER_BUILD_BENCHMARKS`|`OFF`|The benchmarks of the drawing code, `benchmarkDraw`, of the layout, `benchmarkLayout`, and of the rasterizers, `benchmarkRaster`. See [Benchmarks](#benchmarks)|
-
-  At least one backend must be on. The library defines `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` and `FONTRENDERER_USE_BAKED` for each backend that is on, also for the code that uses the library. The header of each backend, like `FontSTB.h`, stops the build if its macro is not defined.
-
-  With only `FONTRENDERER_USE_BAKED`, the library does not build `Font`, which renders glyphs. The examples are not built, and the unit tests only test what does not need a font file.
-
-- Select the library you want to use into your project (stb_truetype, libschrift, FreeType) and drop the following files in your project.
-  Define the macro of each backend you choose, `FONTRENDERER_USE_STB`, `FONTRENDERER_USE_LIBSCHRIFT`, `FONTRENDERER_USE_FREETYPE` or `FONTRENDERER_USE_BAKED`, for every file you compile: the header of the backend and the C API need it.
-
-  - CpuX86.h
-  - CpuX86.cpp
-  - FlatMap.h
-  - FontBase.h
-  - FontBase.cpp
-  - GlyphDraw.h
-  - GlyphDraw.cpp
-  - GlyphDrawNeon.cpp
-  - GlyphDrawSSE2.cpp
-  - GlyphDrawWasm.cpp (it builds nothing without `-msimd128`)
-  - GlyphDrawX64v2.cpp (it builds nothing unless you define `FONTRENDERER_USE_X86_64_V2` or `FONTRENDERER_USE_X86_64_V2_AT_RUNTIME`, which `Platform.h` explains)
-  - GlyphDrawX64v3.cpp (it builds nothing unless you define `FONTRENDERER_USE_X86_64_V3` or `FONTRENDERER_USE_X86_64_V3_AT_RUNTIME`, which `Platform.h` explains, and must be built for x86-64-v3)
-  - MappedFile.h
-  - MappedFile.cpp
-  - Platform.h
-  - SkylineBinPack.h
-  - StableMap.h
-  - Tga.h
-  - Tga.cpp
-  - UTF8_Utils.h
-
-  ---
-
-  **If you choose libschrift, stb_truetype or FreeType**, which render glyphs, also:
-
-  - Font.h
-  - Font.cpp
-  - GposKerning.h
-  - GposKerning.cpp
-  - SkylineBinPack.cpp
-
-  ---
-
-  **If you choose to use libschrift**:
-
-  - FontSFT.h
-  - FontSFT.cpp
-  - schrift.h (the modified copy, see above)
-  - schrift.c (the modified copy, see above)
-
-  ---
-
-  **If you choose to use stb_truetype**:
-
-  - FontSTB.h
-  - FontSTB.cpp
-  - stb_truetype.h
-
-  ---
-
-  **If you choose to use FreeType**:
-
-  - FontFT.h
-  - FontFT.cpp
-  - FreeType itself, which you build and link on your own
-
-  ---
-
-  **If you choose to use baked fonts**:
-
-  - FontBaked.h
-  - FontBaked.cpp
-
-  ---
-
-  **If you also want the C API**:
-
-  - FontC.h
-  - FontC.cpp, which only creates fonts with the backends whose macro is defined
-
 ## Benchmarks
 
-The drawing code picks the fastest level that the processor has. On seven x86 processors (Intel, from a Westmere of 2010 to an Alder Lake of 2022) with MSVC, clang and GCC, the glyphs drew this many times faster than with the scalar code. Each number is the median of all the processors, compilers and runs. The Westmere ran a 32-bit Windows, so it only counts for SSE2:
+The drawing code picks the fastest level that the processor has. The table shows how many times faster than the scalar code it drew the glyphs, both measured in the same executable. Each number is the median of all the scenarios of that size, the processors, the compilers and the runs:
 
-|Level|14 px|24 px|40 px|96 px|BGRA32 texture|
+- x86: six Intel processors, from a Westmere of 2010 to an Alder Lake of 2022, with MSVC, clang and GCC. The Westmere ran a 32-bit Windows, so it only counts for SSE2.
+- NEON: an Apple M1 Pro with Apple clang 16, and two phones with a Cortex-A78 (OnePlus 9 and Xiaomi 24094RAD4G) with the clang 18 of the NDK.
+- WebAssembly SIMD: an i7-10850H in Node, Chrome, Edge and Firefox, and two phones in Chrome, the OnePlus 9 and a Huawei P20 Pro (Cortex-A73). Here the scalar code is also WebAssembly.
+
+|Code|14 px|24 px|40 px|96 px|BGRA32 texture|
 |---|---|---|---|---|---|
-|SSE2|2.5|2.8|3.5|3.9|4.1|
+|SSE2|2.5|2.8|3.4|3.9|4.1|
 |x86-64-v2|2.6|2.9|3.7|4.0|4.3|
 |x86-64-v3|2.6|3.3|4.5|5.5|5.7|
+|NEON, Apple M1 Pro|3.3|3.1|3.4|5.1|5.9|
+|NEON, Cortex-A78|1.5|1.4|1.6|2.0|2.2|
+|WebAssembly SIMD, x86-64|2.1|2.3|2.8|3.0|3.6|
+|WebAssembly SIMD, phones|1.6|1.7|2.0|2.3|2.4|
 
-The larger the glyphs, the more the wider registers help. At 14 pixels each row of a glyph is short, so the three levels draw at about the same speed.
+The larger the glyphs, the more the wider registers help. At 14 pixels each row of a glyph is short, so the three x86 levels draw at about the same speed. NEON gains much less on the Cortex-A78 than on the M1, which decodes twice as many instructions per cycle and has twice as many NEON units. Safari has not been measured.
 
-The layout, what `DrawText` does for each character besides drawing the glyph, keeps its glyphs and its kerning in hash tables of its own. With text of 14 pixels, `DrawText` is 41 to 72 % faster than with the layout of version 0.8.0 on an i7-10850H, depending on the compiler, and 33 to 35 % faster on two Android phones.
+With the SSE2 and NEON code, a rotated glyph usually draws between 6 and 30 % more slowly than an upright one, on x86 with GCC and MSVC, an Apple M1, a Cortex-A78 and a Cortex-A55. There are exceptions: on x86, glyphs of 96 pixels drew faster rotated, and so did glyphs of 24 and 40 pixels on the Cortex-A55. The scalar code draws both at the same speed. With the x86-64-v3 code, rotated and upright glyphs have not been compared.
 
-`benchmarkDraw` measures how fast the text is drawn in 18 scenarios: Roboto at 14, 24, 40 and 96 pixels, with and without rotated glyphs, with an opaque and a translucent color, and the baked Lilita One with effects, which has a color texture. Build it in Release with `-DFONTRENDERER_BUILD_BENCHMARKS=ON`. It reads its fonts from `bin/resources`.
-
-```text
-benchmarkDraw [variant...] [--scenario text]... [--csv file]
-```
-
-Without arguments it measures every variant in every scenario. `--scenario` keeps the scenarios whose name has the text; with several, a scenario must have all of them. `Reference` is `DrawText` itself, with the layout and the clipping. `Baseline` draws the same glyphs with the drawing functions of the library, and the other variants are versions of those functions, kept to compare ideas. It starts with the compiler and the processor, and for each variant it prints the median and the minimum time of 15 samples, its speed against `Baseline`, and whether it leaves the expected pixels.
-
-The scripts are in `benchmarks/scripts`. `benchmark.bat` on Windows and `benchmark.sh` on macOS and Linux run the benchmark of `bin` and save its results there, as text, CSV and an HTML page with charts. They pass their arguments to `benchmarkDraw`. The files are named after the system, the compiler, the architecture and the processor, like `benchmark_windows_gcc15_x64_i7-10850h.txt`, so that runs on other computers or with other compilers do not replace each other. [plot_benchmark.py](benchmarks/scripts/plot_benchmark.py) makes the HTML page, and it can also put several CSV files in one page to compare them. It only needs Python.
-
-`benchmarkLayout` measures the layout: what `DrawText` does for each character besides drawing the glyph, which is between a fifth and a quarter of its time with text of 14 pixels. It compares `GetTextBox` and `DrawText` with copies of their layout, among them the layout of earlier versions, with the tables in `std::unordered_map`. It also draws the text one short line per call, as a user interface draws its labels, and it measures the lookups in the tables alone.
-
-`benchmarkRaster` measures how long each backend takes to render the glyphs, which `benchmarkDraw` leaves out: the 191 printable characters of ASCII and Latin-1, with Roboto and DejaVu Serif Condensed Bold Italic, at 14, 24, 40 and 96 pixels. For each case it prints the median and the minimum time of 15 samples, and a checksum of the texture, which tells whether two builds render the same pixels.
-
-On Windows, `benchmarkAndroid.bat` builds the benchmark for Android with the NDK and the CMake of the Android SDK, runs it on the phone that `adb` sees, and saves the results in `bin`. The phone needs USB debugging. While the benchmark runs, the script keeps the screen on and pins the benchmark to the fastest core that Android lets it use: with the screen off, phones slow down their big cores, and they move programs between big and small cores. `--core N` picks another core, `--abi armeabi-v7a` builds for a phone of 32 bits, and `--program benchmarkLayout` runs the benchmark of the layout instead of `benchmarkDraw`.
-
-The same code placed somewhere else in the program can run up to 10 % faster or slower. Trust a difference only if it is clear and it repeats in two runs.
-
-## Licenses
-
-FontRenderer is distributed under the Boost Software License 1.0, see [LICENSE](LICENSE).
-
-The licenses of the third party code and fonts in this repository are in [LICENSES](LICENSES): stb_truetype, libschrift, pixman, doctest, and the Roboto, DejaVu and Lilita One fonts used by the examples and the tests. The textures in `bin/resources` are baked from Lilita One.
-
-CMake downloads MiniFB for the examples, and FreeType when `FONTRENDERER_USE_FREETYPE` is on and the system has none. They are not part of this repository and have their own licenses. If your program uses the FreeType backend, it includes FreeType, whose license (the FreeType License or the GPLv2, as you choose) asks you to credit FreeType in your documentation.
+How to build and run the benchmarks is in [benchmarks/README.md](benchmarks/README.md).
 
 ## Captures
 
-The example shows every backend that is on side by side, the atlas of one of them, and the keys in the status bar. S bakes the font of the shown atlas: it saves `baked.frb` and `baked.tga` next to the example, reads them back with `FontBaked`, and draws a row with it. The baked row keeps the settings it was saved with, so the antialias keys do not change it.
+The examples use the Mini Frame Buffer (MiniFB) library to create a window and draw the text in it. `exampleRender`, and its C version `exampleRenderC`, show every backend that is on side by side, the atlas of one of them, and the keys in the status bar. S bakes the font of the shown atlas: it saves `baked.frb` and `baked.tga` next to the example, reads them back with `FontBaked`, and draws a row with it. The baked row keeps the settings it was saved with, so the antialias keys do not change it.
 
 |Capture|Settings|
 |---|---|
@@ -347,3 +388,21 @@ The example shows every backend that is on side by side, the atlas of one of the
 |![Mean antialias, extended](screenshots/captureAAm.png)|Antialias with mean weights, glyphs extended one pixel|
 |![Clipping and atlas](screenshots/captureClip.png)|Clipping (the darkened area) and the atlas of stb_truetype|
 |![Baked font](screenshots/captureBaked.png)|The font of stb_truetype baked with S: its row, drawn with `FontBaked`, and its atlas|
+
+## Licenses
+
+FontRenderer is distributed under the Boost Software License 1.0, see [LICENSE](LICENSE).
+
+The licenses of the third party code and fonts in this repository are in [LICENSES](LICENSES): stb_truetype, libschrift, pixman, doctest, and the Roboto, DejaVu and Lilita One fonts used by the examples and the tests. The textures in `bin/resources` are baked from Lilita One.
+
+CMake downloads MiniFB for the examples, and FreeType when `FONTRENDERER_USE_FREETYPE` is on and the system has none. They are not part of this repository and have their own licenses. If your program uses the FreeType backend, it includes FreeType, whose license (the FreeType License or the GPLv2, as you choose) asks you to credit FreeType in your documentation.
+
+## Use of AI
+
+I used Claude, from Anthropic, as a helper during the development. I chose what to try, and every change that went into the library was my decision.
+
+Claude did most of the work in three areas:
+
+- **Tests.** The unit tests check, among other things, that the scalar, SSE2, x86-64-v2, x86-64-v3, NEON and WebAssembly SIMD code leave exactly the same pixels, that drawing a glyph reads and writes only its own texels and pixels.
+- **Benchmarks.** The three benchmark programs, the variants that try one idea each against the code of the library, the scripts that run them on Windows, Linux, macOS, Android and in the browser, and the HTML pages with charts.
+- **Analysis of the results.** The benchmarks ran on six x86 processors, an Apple M1, several Android phones and four web runtimes, with several compilers, two runs each. Claude compared those results and separated real gains from noise. For example, the same code can run up to 10 % faster or slower when it moves to another address in the program, so a gain smaller than that had to repeat to count. With that data I decided which ideas went into the library and which were dropped.
